@@ -1,0 +1,146 @@
+assets:
+  - market: CN
+    symbol: "518880"
+    name: 黄金ETF
+    topics: [gold]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: 黄金, type: name, priority: 10}
+      - {value: 黄金ETF, type: name, priority: 10}
+      - {value: 金价, type: concept, priority: 50}
+      - {value: gold, type: ticker, priority: 20}
+  - market: CN
+    symbol: "000001"
+    name: 上证指数
+    topics: [broad-a-share]
+    asset_type: index
+    currency: CNY
+    timezone: Asia/Shanghai
+    aliases:
+      - {value: 上证指数, type: name, priority: 10}
+      - {value: 沪指, type: name, priority: 10}
+      - {value: A股大盘, type: concept, priority: 20}
+      - {value: 大盘, type: concept, priority: 30}
+  - market: CN
+    symbol: "600519"
+    name: 贵州茅台
+    topics: [liquor]
+    asset_type: stock
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: 贵州茅台, type: name, priority: 10}
+      - {value: 茅台, type: name, priority: 10}
+      - {value: 600519, type: ticker, priority: 1}
+  - market: US
+    symbol: AAPL
+    name: Apple
+    asset_type: stock
+    currency: USD
+    timezone: America/New_York
+    aliases:
+      - {value: Apple, type: name, priority: 10}
+      - {value: 苹果, type: name, priority: 10}
+      - {value: 苹果公司, type: name, priority: 10}
+      - {value: AAPL, type: ticker, priority: 1}
+  - market: US
+    symbol: NDX
+    name: Nasdaq 100
+    asset_type: index
+    currency: USD
+    timezone: America/New_York
+    aliases:
+      - {value: 纳斯达克, type: name, priority: 10}
+      - {value: Nasdaq, type: name, priority: 10}
+      - {value: 纳指, type: name, priority: 10}
+  - market: US
+    symbol: QQQ
+    name: 纳指100ETF-Invesco
+    topics: [nasdaq]
+    asset_type: etf
+    currency: USD
+    timezone: America/New_York
+    aliases:
+      - {value: QQQ, type: ticker, priority: 1}
+      - {value: 纳指ETF, type: name, priority: 10}
+      - {value: Nasdaq 100 ETF, type: name, priority: 10}
+  - market: CN
+    symbol: "159869"
+    name: AI ETF
+    topics: [ai]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: AI, type: concept, priority: 30}
+      - {value: 人工智能, type: concept, priority: 20}
+  - market: CN
+    symbol: "159770"
+    name: 机器人ETF
+    topics: [humanoid-robot]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: 人形机器人, type: concept, priority: 20}
+      - {value: 机器人, type: concept, priority: 20}
+  - market: CN
+    symbol: "159813"
+    name: 半导体ETF
+    topics: [semiconductor]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: 半导体, type: concept, priority: 20}
+      - {value: 芯片, type: concept, priority: 20}
+  - market: CN
+    symbol: "513180"
+    name: 恒生科技ETF
+    topics: [hang-seng-tech]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    aliases:
+      - {value: 恒生科技, type: name, priority: 10}
+      - {value: 港股科技, type: concept, priority: 20}
+  - market: CN
+    symbol: "159992"
+    name: 创新药ETF
+    topics: [innovative-drug]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: 创新药ETF, type: name, priority: 10}
+      - {value: 创新药, type: concept, priority: 20}
+  - market: CN
+    symbol: "516160"
+    name: 新能源ETF
+    topics: [new-energy]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: 新能源ETF, type: name, priority: 10}
+      - {value: 新能源, type: concept, priority: 20}
+  - market: CN
+    symbol: "512690"
+    name: 酒ETF
+    topics: [liquor]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: 酒ETF, type: name, priority: 10}
+      - {value: 白酒, type: concept, priority: 20}

@@ -1,0 +1,31 @@
+services:
+  xhs-spider:
+    build:
+      context: ../integrations/xhs_spider_bridge
+      args:
+        SPIDER_XHS_COMMIT: e1888d712519040f5fcc294baeac4b9505b25c98
+    image: retailtide/xhs-spider-bridge:e1888d7
+    container_name: retailtide-xhs-spider
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18061:18061"
+    environment:
+      XHS_COOKIE_FILE: /run/secrets/xhs-cookies.json
+      BRIDGE_API_KEY: ${BRIDGE_API_KEY:-}
+      BRIDGE_API_KEY_HEADER: ${BRIDGE_API_KEY_HEADER:-X-API-Key}
+      BRIDGE_SEARCH_TIMEOUT_SECONDS: ${BRIDGE_SEARCH_TIMEOUT_SECONDS:-45}
+      BRIDGE_DETAIL_TIMEOUT_SECONDS: ${BRIDGE_DETAIL_TIMEOUT_SECONDS:-30}
+    volumes:
+      - ${XHS_COOKIE_FILE:?set XHS_COOKIE_FILE}:/run/secrets/xhs-cookies.json:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18061/health', timeout=5)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3

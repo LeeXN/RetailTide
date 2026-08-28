@@ -1,0 +1,16 @@
+[Unit]
+Description=RetailTide API and dashboard
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/retail-tide
+EnvironmentFile=/opt/retail-tide/.env
+ExecStart=/opt/retail-tide/.venv/bin/retail-tide serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

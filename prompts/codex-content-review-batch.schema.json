@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "actor",
+          "investor",
+          "novice_signals",
+          "direction",
+          "intent",
+          "position",
+          "emotion",
+          "spam",
+          "promotion",
+          "intent_basis",
+          "intent_evidence",
+          "rationale"
+        ],
+        "properties": {
+          "id": {"type": "integer"},
+          "actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "confidence"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "retail",
+                  "kol",
+                  "media",
+                  "institutional",
+                  "commercial",
+                  "bot_or_spam",
+                  "unknown"
+                ]
+              },
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "investor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["level", "confidence"],
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["novice", "intermediate", "experienced", "unknown"]
+              },
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "novice_signals": {"type": "array", "items": {"type": "string"}},
+          "direction": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "confidence"],
+            "properties": {
+              "value": {
+                "type": "string",
+                "enum": ["bullish", "neutral", "bearish", "unknown"]
+              },
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "intent": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "confidence"],
+            "properties": {
+              "value": {
+                "type": "string",
+                "enum": ["buy", "sell", "hold", "wait", "unknown"]
+              },
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "position": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "confidence"],
+            "properties": {
+              "value": {
+                "type": "string",
+                "enum": ["not_owned", "owned", "sold", "unknown"]
+              },
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "emotion": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "urgency",
+              "fear_of_missing",
+              "social_proof",
+              "price_chasing",
+              "regret",
+              "panic"
+            ],
+            "properties": {
+              "urgency": {"type": "boolean"},
+              "fear_of_missing": {"type": "boolean"},
+              "social_proof": {"type": "boolean"},
+              "price_chasing": {"type": "boolean"},
+              "regret": {"type": "boolean"},
+              "panic": {"type": "boolean"}
+            }
+          },
+          "spam": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "confidence"],
+            "properties": {
+              "value": {"type": "boolean"},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "promotion": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "confidence"],
+            "properties": {
+              "value": {"type": "boolean"},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "intent_basis": {
+            "type": "string",
+            "enum": [
+              "explicit_self_executed",
+              "explicit_self_planned",
+              "explicit_self_position",
+              "explicit_wait",
+              "advice_or_recommendation",
+              "market_directional_view",
+              "risk_warning",
+              "question_or_advice",
+              "negated",
+              "reported_or_quoted",
+              "market_description",
+              "insufficient"
+            ]
+          },
+          "intent_evidence": {"type": "string"},
+          "rationale": {"type": "string"}
+        }
+      }
+    }
+  }
+}

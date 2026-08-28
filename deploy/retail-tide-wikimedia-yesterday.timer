@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect the previous date's Wikimedia UTC bucket at 04:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+AccuracySec=1min
+RandomizedDelaySec=0
+Persistent=true
+Unit=retail-tide-wikimedia.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=RetailTide previous-day collection, analysis, and market sync
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/retail-tide
+EnvironmentFile=/opt/retail-tide/.env
+# The CLI owns one lock shared by manual and scheduled refreshes. Exit 75 means
+# another run is active; systemd retries without multiplying source/LLM traffic.
+ExecStart=/opt/retail-tide/.venv/bin/retail-tide scheduled-refresh --limit 50000
+Restart=on-failure
+RestartSec=1h
+TimeoutStartSec=8h
+Nice=10
+UMask=0077

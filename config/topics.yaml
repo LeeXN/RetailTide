@@ -1,0 +1,127 @@
+xiaohongshu_discovery:
+  # Xiaohongshu has no reliable boolean-OR query. Run these as separate,
+  # newest-first searches, union candidates by note ID before detail requests,
+  # then let the entity resolver attach zero, one, or multiple tracks.
+  queries: [投资, 股票, ETF, 基金, 持仓, 散户]
+  daily_max_pages: 1
+  historical_max_pages: 20
+
+topics:
+  - slug: gold
+    name: 黄金
+    status: active
+    aliases: [gold, 黄金, 金价, 黄金ETF, 贵金属, gold etf]
+    source_queries:
+      zhihu: 黄金 股票 ETF 金价
+      xiaohongshu: 黄金 金价 ETF 投资
+      wikimedia-pageviews: 黄金
+    source_query_variants:
+      xiaohongshu: [黄金ETF 金价走势, 买黄金ETF 散户, 黄金 加仓 止盈, 金价 回调 投资]
+    # The gold board is exceptionally noisy. Use Eastmoney's own paginated
+    # "热门" feed, retain the requested publication-date filter, and stop at a
+    # declared sample budget instead of treating thousands of latest posts as
+    # a complete population.
+    source_strategies:
+      guba:
+        mode: hot
+        max_items: 200
+  - slug: broad-a-share
+    name: A股大盘
+    status: active
+    aliases: [A股大盘, 大盘, 上证指数, 沪指, CSI300]
+    source_queries:
+      guba: zssh000001
+      zhihu: A股 大盘 股票 投资
+      xiaohongshu: A股 大盘 散户 股票
+      wikimedia-pageviews: 上海证券交易所综合股价指数
+    source_query_variants:
+      xiaohongshu: [A股 散户 大盘, 上证指数 股市, 股票 亏钱 回本, A股 加仓 清仓]
+    # The broad-market board is much more active than a normal thematic board.
+    # A 90-day backfill can exceed 3,000 pages on this high-volume board.
+    source_max_pages:
+      guba: 5000
+  - slug: nasdaq
+    name: 纳斯达克
+    status: active
+    aliases: [纳斯达克, Nasdaq, NASDAQ, 纳指]
+    source_queries:
+      zhihu: 纳斯达克 股票 ETF 投资
+      xiaohongshu: 纳斯达克 纳指 ETF 投资
+      wikimedia-pageviews: 纳斯达克
+    source_query_variants:
+      xiaohongshu: [纳指ETF 定投, 纳斯达克 加仓, QQQ 投资, 纳指 亏损]
+  - slug: ai
+    name: AI
+    status: active
+    aliases: [AI, ai, 人工智能, 大模型]
+    source_queries:
+      zhihu: AI 股票 ETF 投资
+      xiaohongshu: AI 人工智能 股票 投资
+      wikimedia-pageviews: 人工智能
+    source_query_variants:
+      xiaohongshu: [AI ETF 股票, 人工智能 概念股, 算力 股票 投资, 大模型 股票]
+    source_max_pages:
+      taoguba: 300
+  - slug: humanoid-robot
+    name: 人形机器人
+    status: active
+    aliases: [人形机器人, 机器人, humanoid robot]
+    source_queries:
+      zhihu: 人形机器人 股票 投资
+      xiaohongshu: 人形机器人 机器人 股票 投资
+      wikimedia-pageviews: 人形機器人
+    source_query_variants:
+      xiaohongshu: [人形机器人 概念股, 机器人ETF, 机器人 股票 持仓, 特斯拉机器人 股票]
+  - slug: semiconductor
+    name: 半导体
+    status: active
+    aliases: [半导体, 芯片, semiconductor]
+    source_queries:
+      guba: 芯片
+      zhihu: 半导体 股票 ETF 投资
+      xiaohongshu: 半导体 芯片 存储 股票
+      wikimedia-pageviews: 半导体
+    source_query_variants:
+      xiaohongshu: [半导体ETF, 芯片 股票 持仓, 存储芯片 概念股, 国产芯片 投资]
+  - slug: innovative-drug
+    name: 创新药
+    status: active
+    aliases: [创新药, 医药, biotech]
+    source_queries:
+      zhihu: 创新药 股票 投资
+      xiaohongshu: 创新药 医药 股票 投资
+      wikimedia-pageviews: 药物研发
+    source_query_variants:
+      xiaohongshu: [创新药ETF, 医药 股票 持仓, 创新药 概念股, 药明康德 股票]
+  - slug: new-energy
+    name: 新能源
+    status: active
+    aliases: [新能源, 光伏, 锂电]
+    source_queries:
+      zhihu: 新能源 股票 ETF 投资
+      xiaohongshu: 新能源 光伏 锂电 股票
+      wikimedia-pageviews: 替代能源
+    source_query_variants:
+      xiaohongshu: [新能源ETF, 光伏 股票 持仓, 锂电池 概念股, 新能源车 股票]
+  - slug: liquor
+    name: 白酒
+    status: active
+    aliases: [白酒, 消费白马]
+    source_queries:
+      zhihu: 白酒 股票 ETF 投资
+      xiaohongshu: 白酒 茅台 股票 ETF
+      wikimedia-pageviews: 白酒
+    source_query_variants:
+      xiaohongshu: [白酒ETF, 茅台 股票 持仓, 白酒股 抄底, 贵州茅台 股价]
+    source_max_pages:
+      guba: 1200
+  - slug: hang-seng-tech
+    name: 恒生科技
+    status: active
+    aliases: [恒生科技, 港股科技, HSTECH]
+    source_queries:
+      zhihu: 恒生科技 ETF 投资
+      xiaohongshu: 恒生科技 港股 ETF 投资
+      wikimedia-pageviews: 恒生科技指數
+    source_query_variants:
+      xiaohongshu: [恒生科技ETF, 港股科技 加仓, 恒科ETF 定投, 港股互联网 股票]
