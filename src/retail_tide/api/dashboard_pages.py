@@ -306,6 +306,31 @@ _HTML = r"""<!doctype html>
     .raw-detail { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: rgba(9, 17, 31, .38); }
     pre { max-height: 360px; overflow: auto; color: #c9d8ef; white-space: pre-wrap; word-break: break-word; font-size: 10px; }
     .footer { margin-top: 28px; color: var(--muted); font-size: 11px; }
+    .site-footer {
+      border-top: 1px solid rgba(42, 59, 89, .72);
+      background: rgba(7, 14, 25, .64);
+    }
+    .footer-inner {
+      display: flex;
+      width: min(1480px, calc(100% - 40px));
+      min-height: 72px;
+      margin: 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .footer-mark { letter-spacing: .08em; text-transform: uppercase; }
+    .github-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #c9d8ef;
+      text-decoration: none;
+    }
+    .github-link:hover { color: var(--cyan); }
+    .github-link svg { width: 17px; height: 17px; fill: currentColor; flex: none; }
     @media (max-width: 1120px) {
       .track-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .market-layout { grid-template-columns: 300px minmax(0, 1fr); }
@@ -321,9 +346,11 @@ _HTML = r"""<!doctype html>
       .post-controls { top: 116px; }
     }
     @media (max-width: 540px) {
-      .header-inner, .shell { width: min(100% - 24px, 1480px); }
+      .header-inner, .shell, .footer-inner { width: min(100% - 24px, 1480px); }
       .shell { padding-top: 20px; }
       .brand span { display: none; }
+      .footer-inner { align-items: flex-start; flex-direction: column; justify-content: center; gap: 5px; }
+      .github-link span { overflow-wrap: anywhere; }
       .track-grid { grid-template-columns: 1fr; }
       .market-facts { grid-template-columns: 1fr 1fr; }
       .coverage-facts { grid-template-columns: 1fr 1fr; }
@@ -345,6 +372,15 @@ _HTML = r"""<!doctype html>
     </div>
   </header>
   <main id="main" class="shell"><section class="notice">正在加载数据…</section></main>
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span class="footer-mark">RetailTide · 开源项目</span>
+      <a class="github-link" href="https://github.com/LeeXN/RetailTide" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.72 1.27 3.38.97.11-.75.41-1.27.74-1.56-2.57-.29-5.27-1.29-5.27-5.69 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.47.11-3.05 0 0 .96-.31 3.16 1.18A10.96 10.96 0 0 1 12 6.12c.98 0 1.95.13 2.86.38 2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.23 2.76.11 3.05.74.8 1.18 1.83 1.18 3.09 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.07.79 2.16v3.25c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg>
+        <span>https://github.com/LeeXN/RetailTide</span>
+      </a>
+    </div>
+  </footer>
   <script>
     const PAGE = document.body.dataset.page;
     const state = {

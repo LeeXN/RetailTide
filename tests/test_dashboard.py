@@ -143,6 +143,16 @@ def test_builtin_dashboard_has_analysis_drilldown_and_refresh_paths():
         assert phrase not in research
 
 
+@pytest.mark.parametrize("page", ["overview", "trends", "posts", "research"])
+def test_builtin_dashboard_has_shared_github_footer(page):
+    html = dashboard_html(page)
+
+    assert html.count('href="https://github.com/LeeXN/RetailTide"') == 1
+    assert "https://github.com/LeeXN/RetailTide</span>" in html
+    assert 'target="_blank" rel="noopener noreferrer"' in html
+    assert "RetailTide · 开源项目" in html
+
+
 def test_dashboard_routes_are_registered():
     app = create_app()
     paths = {route.path for route in app.routes}
