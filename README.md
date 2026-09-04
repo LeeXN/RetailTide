@@ -323,7 +323,7 @@ systemctl list-timers --all 'retail-tide-posts-*'
 systemctl list-timers --all 'retail-tide-wikimedia-*'
 ```
 
-Timer 使用 `Persistent=true`。停机跨越多个自然日时，按遗漏日期分别运行 `refresh --date`。旧版部署需停用并移除 `retail-tide-posts-today.timer`。
+Timer 使用 `Persistent=true`。帖子任务若因来源故障固定在旧日期并跨过后续调度点，会在旧日期成功后逐日追赶所有已经闭合的上海自然日；如果主机停机期间没有生成固定状态，仍需按遗漏日期分别运行 `refresh --date`。旧版部署需停用并移除 `retail-tide-posts-today.timer`。
 
 ### 小红书部署参考
 

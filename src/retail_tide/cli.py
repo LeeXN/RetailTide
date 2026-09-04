@@ -1722,33 +1722,36 @@ def _scheduled_refresh_run(
             start = end = None
     if start is None or end is None:
         start, end = scheduled_post_window()
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = state_path.with_suffix(f"{state_path.suffix}.tmp")
-    temporary.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "since": start.isoformat(),
-                "until": end.isoformat(),
-            },
-            ensure_ascii=False,
-            indent=2,
+
+    def write_state(window_start: datetime, window_end: datetime) -> None:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = state_path.with_suffix(f"{state_path.suffix}.tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "since": window_start.isoformat(),
+                    "until": window_end.isoformat(),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
         )
-        + "\n",
-        encoding="utf-8",
-    )
-    temporary.chmod(0o600)
-    temporary.replace(state_path)
-    logger.info(
-        "event=scheduled_refresh_window schedule=%s window=%s since=%s until=%s state=%s",
-        schedule,
-        "previous-day",
-        start.isoformat(),
-        end.isoformat(),
-        state_path,
-    )
-    completed = False
-    try:
+        temporary.chmod(0o600)
+        temporary.replace(state_path)
+
+    while True:
+        write_state(start, end)
+        logger.info(
+            "event=scheduled_refresh_window schedule=%s window=%s since=%s until=%s state=%s",
+            schedule,
+            "previous-day",
+            start.isoformat(),
+            end.isoformat(),
+            state_path,
+        )
         refresh(
             name=source,
             exclude_source=exclude_source,
@@ -1761,16 +1764,31 @@ def _scheduled_refresh_run(
             topic=None,
             sync_market_data=sync_market_data,
         )
-        completed = True
-    finally:
-        if completed:
-            state_path.unlink(missing_ok=True)
-            logger.info(
-                "event=scheduled_refresh_state_cleared path=%s since=%s until=%s",
-                state_path,
-                start.isoformat(),
-                end.isoformat(),
-            )
+        if schedule == "posts":
+            _latest_start, latest_end = scheduled_post_window()
+            if end < latest_end:
+                previous_start, previous_end = start, end
+                start = end
+                end = min(end + timedelta(days=1), latest_end)
+                write_state(start, end)
+                logger.info(
+                    "event=scheduled_refresh_catchup schedule=%s "
+                    "completed_since=%s completed_until=%s next_since=%s next_until=%s",
+                    schedule,
+                    previous_start.isoformat(),
+                    previous_end.isoformat(),
+                    start.isoformat(),
+                    end.isoformat(),
+                )
+                continue
+        state_path.unlink(missing_ok=True)
+        logger.info(
+            "event=scheduled_refresh_state_cleared path=%s since=%s until=%s",
+            state_path,
+            start.isoformat(),
+            end.isoformat(),
+        )
+        return
 
 
 @app.command("scheduled-refresh", hidden=True)

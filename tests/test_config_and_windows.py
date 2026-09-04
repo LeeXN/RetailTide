@@ -1,3 +1,4 @@
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta
 
@@ -276,13 +277,10 @@ def test_scheduled_refresh_pins_failed_window_until_success(tmp_path, monkeypatc
     assert state_path.exists()
     assert state_path.stat().st_mode & 0o777 == 0o600
 
-    def must_not_recalculate_window():
-        raise AssertionError("a failed scheduled window must remain pinned")
-
     monkeypatch.setattr(
         cli_module,
         "scheduled_post_window",
-        must_not_recalculate_window,
+        lambda: (start, end),
     )
     monkeypatch.setattr(cli_module, "refresh", lambda **kwargs: calls.append(kwargs))
     cli_module.scheduled_refresh(limit=123)
@@ -292,6 +290,74 @@ def test_scheduled_refresh_pins_failed_window_until_success(tmp_path, monkeypatc
     assert all(call["limit"] == 123 for call in calls)
     assert all(call["sync_market_data"] is True for call in calls)
     assert not state_path.exists()
+
+
+def test_scheduled_refresh_catches_up_closed_days_after_pinned_success(tmp_path, monkeypatch):
+    state_path = tmp_path / "scheduled-refresh.json"
+    first_start = datetime(2026, 9, 1, 16, tzinfo=UTC)
+    first_end = datetime(2026, 9, 2, 16, tzinfo=UTC)
+    latest_start = first_end
+    latest_end = datetime(2026, 9, 3, 16, tzinfo=UTC)
+    calls = []
+    state_path.write_text(
+        f'{{"version":1,"since":"{first_start.isoformat()}","until":"{first_end.isoformat()}"}}',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("RETAIL_TIDE_SCHEDULED_STATE_FILE", str(state_path))
+    monkeypatch.setattr(
+        cli_module,
+        "scheduled_post_window",
+        lambda: (latest_start, latest_end),
+    )
+    monkeypatch.setattr(cli_module, "refresh", lambda **kwargs: calls.append(kwargs))
+
+    cli_module.scheduled_refresh(limit=123)
+
+    assert [(call["since"], call["until"]) for call in calls] == [
+        (first_start.isoformat(), first_end.isoformat()),
+        (latest_start.isoformat(), latest_end.isoformat()),
+    ]
+    assert not state_path.exists()
+
+
+def test_scheduled_refresh_pins_the_next_window_when_catchup_fails(tmp_path, monkeypatch):
+    state_path = tmp_path / "scheduled-refresh.json"
+    first_start = datetime(2026, 9, 1, 16, tzinfo=UTC)
+    first_end = datetime(2026, 9, 2, 16, tzinfo=UTC)
+    latest_start = first_end
+    latest_end = datetime(2026, 9, 3, 16, tzinfo=UTC)
+    calls = []
+    state_path.write_text(
+        f'{{"version":1,"since":"{first_start.isoformat()}","until":"{first_end.isoformat()}"}}',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("RETAIL_TIDE_SCHEDULED_STATE_FILE", str(state_path))
+    monkeypatch.setattr(
+        cli_module,
+        "scheduled_post_window",
+        lambda: (latest_start, latest_end),
+    )
+
+    def fail_catchup(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 2:
+            raise typer.Exit(code=1)
+
+    monkeypatch.setattr(cli_module, "refresh", fail_catchup)
+
+    with pytest.raises(typer.Exit):
+        cli_module.scheduled_refresh(limit=123)
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert [(call["since"], call["until"]) for call in calls] == [
+        (first_start.isoformat(), first_end.isoformat()),
+        (latest_start.isoformat(), latest_end.isoformat()),
+    ]
+    assert state["since"] == latest_start.isoformat()
+    assert state["until"] == latest_end.isoformat()
+    assert state_path.stat().st_mode & 0o777 == 0o600
 
 
 def test_terminal_collection_jobs_do_not_block_available_pipeline_data():

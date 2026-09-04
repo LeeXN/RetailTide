@@ -323,7 +323,7 @@ systemctl list-timers --all 'retail-tide-posts-*'
 systemctl list-timers --all 'retail-tide-wikimedia-*'
 ```
 
-Timers use `Persistent=true`. After a multi-day outage, run `refresh --date` for each missed date. Older deployments must disable and remove `retail-tide-posts-today.timer`.
+Timers use `Persistent=true`. If a source failure pins the posts job to an older date across later timer events, the job catches up each closed Shanghai date after that pinned date succeeds. If the host was down before any pinned state was created, run `refresh --date` for each missed date. Older deployments must disable and remove `retail-tide-posts-today.timer`.
 
 ### Xiaohongshu deployment references
 
