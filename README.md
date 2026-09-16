@@ -308,16 +308,20 @@ curl -fsS http://127.0.0.1:8000/health
 
 | Timer | 时间 | 任务 |
 | --- | --- | --- |
-| `retail-tide-posts-yesterday.timer` | 每天 03:00 `Asia/Shanghai` | 采集并分析前一上海自然日，同步行情 |
+| `retail-tide-posts-yesterday.timer` | 每天 03:00 `Asia/Shanghai` | 采集并分析前一上海自然日（排除小红书），同步行情 |
+| `retail-tide-xiaohongshu-yesterday.timer` | 每天 07:30 `Asia/Shanghai` | 独立采集、分析小红书，不重复同步行情 |
 | `retail-tide-wikimedia-yesterday.timer` | 每天 04:00 UTC | 采集前一 UTC 日的 Wikimedia 数据 |
 
 ```bash
 sudo install -m 0644 deploy/retail-tide-posts.service /etc/systemd/system/
 sudo install -m 0644 deploy/retail-tide-posts-yesterday.timer /etc/systemd/system/
+sudo install -m 0644 deploy/retail-tide-xiaohongshu.service /etc/systemd/system/
+sudo install -m 0644 deploy/retail-tide-xiaohongshu-yesterday.timer /etc/systemd/system/
 sudo install -m 0644 deploy/retail-tide-wikimedia.service /etc/systemd/system/
 sudo install -m 0644 deploy/retail-tide-wikimedia-yesterday.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now retail-tide-posts-yesterday.timer
+sudo systemctl enable --now retail-tide-xiaohongshu-yesterday.timer
 sudo systemctl enable --now retail-tide-wikimedia-yesterday.timer
 systemctl list-timers --all 'retail-tide-posts-*'
 systemctl list-timers --all 'retail-tide-wikimedia-*'
@@ -326,6 +330,12 @@ systemctl list-timers --all 'retail-tide-wikimedia-*'
 Timer 使用 `Persistent=true`。帖子任务若因来源故障固定在旧日期并跨过后续调度点，会在旧日期成功后逐日追赶所有已经闭合的上海自然日；如果主机停机期间没有生成固定状态，仍需按遗漏日期分别运行 `refresh --date`。旧版部署需停用并移除 `retail-tide-posts-today.timer`。
 
 ### 小红书部署参考
+
+拆分旧调度前，在没有采集任务运行时执行 `retail-tide split-xiaohongshu-schedule`，复制各来源断点并固定未完成的小红书日期；原断点保留。ARM 容器部署须通过实际 Compose 运行命令，不能直接安装上面的宿主机 Python 示例。
+
+小红书保留既有采样量，搜索/翻页完成后冷却 60 秒，详情后 30 秒，另加 0–10 秒抖动。配置项为 `RETAIL_TIDE_XIAOHONGSHU_SEARCH_COOLDOWN`、`RETAIL_TIDE_XIAOHONGSHU_PAGE_COOLDOWN`、`RETAIL_TIDE_XIAOHONGSHU_DETAIL_COOLDOWN`；现有 `MIN_INTERVAL` 是下限。单轮时间预算 `RETAIL_TIDE_XIAOHONGSHU_TOTAL_BUDGET` 默认 900 秒。
+
+登录或安全验证会持久暂停整个小红书来源；由账号所有者处理后运行 `retail-tide xiaohongshu-resume` 清除暂停，该命令不启动采集。限流退避为 1/2/4/8 小时，并遵守更长的服务端等待时间。状态可在 `/sources/status` 的 `evidence.collection_control` 查看。07:30 遇锁每 15 分钟再试，任务最长 12 小时，未完成日期保留。
 
 - [`xiaohongshu-mcp` Linux ARM64 适配记录](docs/xiaohongshu-mcp-arm64.md)
 - [noVNC 人工短信验证方案](docs/xiaohongshu-novnc-login.md)

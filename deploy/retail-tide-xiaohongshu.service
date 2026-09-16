@@ -1,0 +1,17 @@
+[Unit]
+Description=RetailTide previous-day Xiaohongshu collection and analysis
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/retail-tide
+EnvironmentFile=/opt/retail-tide/.env
+ExecStart=/opt/retail-tide/.venv/bin/retail-tide scheduled-xiaohongshu --limit 50000
+Restart=on-failure
+RestartPreventExitStatus=78
+RestartSec=15min
+TimeoutStartSec=12h
+Nice=10
+UMask=0077

@@ -20,7 +20,7 @@ from retail_tide.time import UTC
 def test_research_readiness_distinguishes_entry_and_maturity(session, settings):
     topic = session.scalar(select(Topic).where(Topic.slug == "ai"))
     source = session.scalar(select(Source).where(Source.name == "guba"))
-    asset = session.scalar(select(Asset).where(Asset.symbol == "159869"))
+    asset = session.scalar(select(Asset).where(Asset.symbol == "159819"))
     started_at = datetime(2026, 8, 14, tzinfo=UTC)
     event = SignalEvent(
         source_id=source.id,

@@ -1,0 +1,67 @@
+diff --git a/browser/browser.go b/browser/browser.go
+index 59bbe39..7660432 100644
+--- a/browser/browser.go
++++ b/browser/browser.go
+@@ -3,6 +3,7 @@ package browser
+ import (
+ 	"fmt"
+ 	"net/url"
++	"os"
+ 	"strings"
+ 
+ 	"github.com/sirupsen/logrus"
+@@ -64,13 +65,22 @@ func NewBrowser(headless bool, options ...Option) *headless_browser.Browser {
+ 
+ 	opts := []headless_browser.Option{
+ 		headless_browser.WithHeadless(headless),
+-		// 用内置浏览器的默认配置，不强制 UA。
+-		headless_browser.WithFingerprint(""), // 空 = 按运行 OS 自动：Linux→windows，mac→macos
+-		headless_browser.WithStealthJS(false),
+ 		headless_browser.WithLanguage("zh-CN"), // 面向小红书
+-		// 品牌报 Chrome。
+-		// 注：hardware-concurrency 不设，交给 seed 派生。
+-		headless_browser.WithExtraFlags(map[string]string{"fingerprint-brand": "Chrome"}),
++	}
++	if strings.TrimSpace(os.Getenv("XHS_BROWSER_BIN")) != "" {
++		// Distro Chromium does not contain upstream's source-level fingerprint
++		// engine. Use the dependency's JS stealth path instead of passing flags
++		// that this browser silently ignores.
++		opts = append(opts, headless_browser.WithStealthJS(true))
++		logrus.Warn("operator-supplied browser uses JS stealth compatibility mode")
++	} else {
++		opts = append(opts,
++			// 用内置浏览器的默认配置，不强制 UA。
++			headless_browser.WithFingerprint(""), // 空 = 按运行 OS 自动：Linux→windows，mac→macos
++			headless_browser.WithStealthJS(false),
++			// 品牌报 Chrome；hardware-concurrency 交给 seed 派生。
++			headless_browser.WithExtraFlags(map[string]string{"fingerprint-brand": "Chrome"}),
++		)
+ 	}
+ 	opts = append(opts, headless_browser.WithChromeBinPath(binPath))
+ 
+diff --git a/browser/browser_download.go b/browser/browser_download.go
+index 1d9173c..4a2bec3 100644
+--- a/browser/browser_download.go
++++ b/browser/browser_download.go
+@@ -69,6 +69,21 @@ func browserCacheDir() (string, error) {
+ // EnsureBrowser 确保本地存在内置浏览器二进制，返回其路径。
+ // 已缓存则直接返回；否则下载 → 校验 SHA256 → 解压。当前平台无预编译二进制时返回 error。
+ func EnsureBrowser() (string, error) {
++	// Upstream does not publish a Linux ARM64 browser artifact. RetailTide's
++	// ARM64 image therefore opts into a distro Chromium explicitly instead of
++	// silently allowing rod to download or select an unrelated browser.
++	if configured := strings.TrimSpace(os.Getenv("XHS_BROWSER_BIN")); configured != "" {
++		info, err := os.Stat(configured)
++		if err != nil {
++			return "", fmt.Errorf("configured browser %s is unavailable: %w", configured, err)
++		}
++		if info.IsDir() || info.Mode()&0o111 == 0 {
++			return "", fmt.Errorf("configured browser %s is not executable", configured)
++		}
++		logrus.Warnf("using operator-supplied browser binary: %s", configured)
++		return configured, nil
++	}
++
+ 	asset, binName, ok := platformAsset()
+ 	if !ok {
+ 		return "", fmt.Errorf("当前平台 %s/%s 无预编译浏览器，暂不支持", runtime.GOOS, runtime.GOARCH)

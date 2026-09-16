@@ -1,0 +1,173 @@
+diff --git a/service.go b/service.go
+index 499b216..45d58e0 100644
+--- a/service.go
++++ b/service.go
+@@ -102,7 +102,12 @@ func (s *XiaohongshuService) DeleteCookies(ctx context.Context) error {
+ }
+ 
+ // CheckLoginStatus 检查登录状态
+-func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatusResponse, error) {
++func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (response *LoginStatusResponse, err error) {
++	ctx, finish, err := beginReadOperation(ctx, "login_status")
++	if err != nil {
++		return nil, err
++	}
++	defer finish(&err)
+ 	b := newBrowser()
+ 	defer b.Close()
+ 
+@@ -116,7 +121,7 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
+ 		return nil, err
+ 	}
+ 
+-	response := &LoginStatusResponse{
++	response = &LoginStatusResponse{
+ 		IsLoggedIn: isLoggedIn,
+ 	}
+ 
+@@ -366,7 +371,12 @@ func (s *XiaohongshuService) publishVideo(ctx context.Context, content xiaohongs
+ }
+ 
+ // ListFeeds 获取Feeds列表
+-func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse, error) {
++func (s *XiaohongshuService) ListFeeds(ctx context.Context) (response *FeedsListResponse, err error) {
++	ctx, finish, err := beginReadOperation(ctx, "feeds")
++	if err != nil {
++		return nil, err
++	}
++	defer finish(&err)
+ 	b := newBrowser()
+ 	defer b.Close()
+ 
+@@ -381,7 +391,7 @@ func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse,
+ 		return nil, err
+ 	}
+ 
+-	response := &FeedsListResponse{
++	response = &FeedsListResponse{
+ 		Feeds: feeds,
+ 		Count: len(feeds),
+ 	}
+@@ -389,7 +399,12 @@ func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse,
+ 	return response, nil
+ }
+ 
+-func (s *XiaohongshuService) SearchFeeds(ctx context.Context, keyword string, filters ...xiaohongshu.FilterOption) (*FeedsListResponse, error) {
++func (s *XiaohongshuService) SearchFeeds(ctx context.Context, keyword string, filters ...xiaohongshu.FilterOption) (response *FeedsListResponse, err error) {
++	ctx, finish, err := beginReadOperation(ctx, "search")
++	if err != nil {
++		return nil, err
++	}
++	defer finish(&err)
+ 	b := newBrowser()
+ 	defer b.Close()
+ 
+@@ -403,7 +418,7 @@ func (s *XiaohongshuService) SearchFeeds(ctx context.Context, keyword string, fi
+ 		return nil, err
+ 	}
+ 
+-	response := &FeedsListResponse{
++	response = &FeedsListResponse{
+ 		Feeds: feeds,
+ 		Count: len(feeds),
+ 	}
+@@ -417,7 +432,12 @@ func (s *XiaohongshuService) GetFeedDetail(ctx context.Context, feedID, xsecToke
+ }
+ 
+ // GetFeedDetailWithConfig 使用配置获取Feed详情
+-func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID, xsecToken string, loadAllComments bool, config xiaohongshu.CommentLoadConfig) (*FeedDetailResponse, error) {
++func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID, xsecToken string, loadAllComments bool, config xiaohongshu.CommentLoadConfig) (response *FeedDetailResponse, err error) {
++	ctx, finish, err := beginReadOperation(ctx, "detail")
++	if err != nil {
++		return nil, err
++	}
++	defer finish(&err)
+ 	b := newBrowser()
+ 	defer b.Close()
+ 
+@@ -431,7 +451,7 @@ func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID
+ 		return nil, err
+ 	}
+ 
+-	response := &FeedDetailResponse{
++	response = &FeedDetailResponse{
+ 		FeedID: feedID,
+ 		Data:   result,
+ 	}
+diff --git a/xiaohongshu/feed_detail.go b/xiaohongshu/feed_detail.go
+index 2cfde9f..69c7a8d 100644
+--- a/xiaohongshu/feed_detail.go
++++ b/xiaohongshu/feed_detail.go
+@@ -101,33 +101,22 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID,
+ 	page := f.page.Context(ctx).Timeout(10 * time.Minute)
+ 	url := makeFeedDetailURL(feedID, xsecToken)
+ 
+-	logrus.Infof("打开 feed 详情页: %s", url)
++	logrus.Info("event=browser_page_opening operation=detail")
+ 	logrus.Infof("配置: 点击更多=%v, 回复阈值=%d, 最大评论数=%d, 滚动速度=%s",
+ 		config.ClickMoreReplies, config.MaxRepliesThreshold, config.MaxCommentItems, config.ScrollSpeed)
+ 
+-	// 使用retry-go处理页面导航和DOM稳定等待
+-	err := retry.Do(
+-		func() error {
+-			page.MustNavigate(url)
+-			page.MustWaitDOMStable()
+-			return nil
+-		},
+-		retry.Attempts(3),
+-		retry.Delay(500*time.Millisecond),
+-		retry.MaxJitter(1000*time.Millisecond),
+-		retry.OnRetry(func(n uint, err error) {
+-			logrus.Debugf("页面导航重试 #%d: %v", n, err)
+-		}),
+-	)
+-	if err != nil {
+-		logrus.Errorf("页面导航失败: %v", err)
++	// One navigation per operation; the caller owns retry and cooldown policy.
++	if err := page.Navigate(url); err != nil {
+ 		return nil, err
+ 	}
++	logrus.Info("event=browser_page_opened operation=detail")
+ 	humanize.Delay(ctx, humanize.AfterNavigate)
+ 
+ 	if err := checkPageAccessible(page); err != nil {
+ 		return nil, err
+ 	}
++	page.MustWait(`() => window.__INITIAL_STATE__?.note?.noteDetailMap !== undefined`)
++	logrus.Info("event=browser_data_ready operation=detail")
+ 
+ 	if loadAllComments {
+ 		if err := f.loadAllCommentsWithConfig(ctx, page, config); err != nil {
+@@ -140,7 +129,9 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID,
+ 		return nil, err
+ 	}
+ 
+-	return f.extractFeedDetail(page, feedID)
++	result, err := f.extractFeedDetail(page, feedID)
++	logrus.Info("event=browser_data_read operation=detail")
++	return result, err
+ }
+ 
+ // ========== 评论加载器 ==========
+diff --git a/xiaohongshu/search.go b/xiaohongshu/search.go
+index 7c22952..18004e4 100644
+--- a/xiaohongshu/search.go
++++ b/xiaohongshu/search.go
+@@ -106,8 +106,8 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
+ 
+ 	searchURL := makeSearchURL(keyword)
+ 	page.MustNavigate(searchURL)
+-	page.MustWaitStable()
+-	page.MustWait(`() => window.__INITIAL_STATE__ !== undefined`)
++	logrus.Info("event=browser_page_opened operation=search")
++	page.MustWait(`() => window.__INITIAL_STATE__?.search?.feeds !== undefined`)
+ 	humanize.Delay(ctx, humanize.AfterNavigate)
+ 
+ 	if len(pending) > 0 {
+@@ -162,6 +162,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
+ 		return nil, fmt.Errorf("failed to unmarshal feeds: %w", err)
+ 	}
+ 
++	logrus.Info("event=browser_data_read operation=search")
+ 	return onlyNotes(feeds), nil
+ }

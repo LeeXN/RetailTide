@@ -1,0 +1,3 @@
+services:
+  xiaohongshu-mcp:
+    image: retailtide/xiaohongshu-mcp-arm64:read-20260915

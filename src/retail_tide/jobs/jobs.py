@@ -47,7 +47,7 @@ from ..sources.commoncrawl import CommonCrawlSource, canonical_url
 from ..sources.guba import guba_hot_cursor
 from ..sources.xiaohongshu import xiaohongshu_strategy_cursor
 from ..sources.zhihu import zhihu_market_question_query
-from ..time import SHANGHAI, as_utc, now_utc, resolve_collection_window
+from ..time import SHANGHAI, UTC, as_utc, now_utc, resolve_collection_window
 
 INCREMENTAL_FIRST_WINDOW = timedelta(hours=24)
 INCREMENTAL_OVERLAP = timedelta(hours=2)
@@ -266,6 +266,12 @@ async def collect_source_async(
                     kwargs["max_detail_requests"] = 0
             elif normalized_name == "xiaohongshu":
                 kwargs["min_request_interval"] = interval
+                kwargs.update(
+                    search_cooldown=settings.xiaohongshu_search_cooldown,
+                    page_cooldown=settings.xiaohongshu_page_cooldown,
+                    detail_cooldown=settings.xiaohongshu_detail_cooldown,
+                    total_budget=settings.xiaohongshu_total_budget,
+                )
                 kwargs["spider_endpoint"] = settings.xiaohongshu_spider_endpoint
                 kwargs["spider_credential"] = settings.xiaohongshu_spider_credential()
                 kwargs["known_source_item_ids"] = set(known_raw_ids)
@@ -317,6 +323,19 @@ async def collect_source_async(
                 bool(cursor),
             )
             result = await collector.collect(query, since, cursor, until=until)
+            if normalized_name == "xiaohongshu" and getattr(collector, "control", None):
+                control_state = collector.control.read()
+                if control_state.get("paused") or control_state.get("retry_at", 0) > time.time():
+                    result = result.model_copy(
+                        update={
+                            "partial": True,
+                            "diagnostics": {
+                                **result.diagnostics,
+                                "collection_control": control_state,
+                                "error_code": control_state.get("reason"),
+                            },
+                        }
+                    )
             _merge_collection_diagnostics(diagnostics, result.diagnostics)
             for warning in result.warnings:
                 if warning not in warnings:
@@ -388,7 +407,7 @@ async def collect_source_async(
                 result.exhausted or not result.next_cursor,
                 time.monotonic() - page_started,
             )
-            if result.exhausted or not result.next_cursor:
+            if result.partial or result.exhausted or not result.next_cursor:
                 break
             cursor = result.next_cursor
         else:
@@ -455,6 +474,8 @@ async def collect_source_async(
         }
     except Exception as exc:  # noqa: BLE001 - every collector failure marks source degraded
         increment("collector_errors_total")
+        if normalized_name == "xiaohongshu" and getattr(collector, "control", None):
+            diagnostics["collection_control"] = collector.control.read()
         error_code = getattr(exc, "error_code", None)
         retry_after_seconds = getattr(exc, "retry_after_seconds", None)
         transport_name = getattr(exc, "transport_name", None)
@@ -708,9 +729,8 @@ def _backfill_job_specs(
             "daily_max_pages": 1,
             "historical_max_pages": 20,
         }
-        recent_daily_window = (
-            until - since <= timedelta(days=1)
-            and until >= now_utc() - timedelta(days=2)
+        recent_daily_window = until - since <= timedelta(days=1) and until >= now_utc() - timedelta(
+            days=2
         )
         page_limit_key = "daily_max_pages" if recent_daily_window else "historical_max_pages"
         page_limit = max(1, int(discovery[page_limit_key]))
@@ -736,8 +756,8 @@ def _backfill_job_specs(
                 continue
             primary_query = configured_queries.get(topic.slug, {}).get(source, topic.name)
             page_limit = configured_page_limits.get(topic.slug, {}).get(source, default_page_limit)
-            source_strategy = (configured_source_strategies or {}).get(topic.slug, {}).get(
-                source, {}
+            source_strategy = (
+                (configured_source_strategies or {}).get(topic.slug, {}).get(source, {})
             )
             if source == "guba" and source_strategy.get("mode") == "hot":
                 max_items = max(1, int(source_strategy.get("max_items") or 200))
@@ -1715,6 +1735,26 @@ def _apply_backfill_job_result(
     )
     job["partial"] = bool(result.get("source_partial"))
     job["warnings"] = list(result.get("warnings") or [])
+    control_state = (result.get("diagnostics") or {}).get("collection_control") or {}
+    if source == "xiaohongshu" and (
+        control_state.get("paused") or control_state.get("retry_at", 0) > time.time()
+    ):
+        # Waiting for the account owner or the provider is not retry exhaustion.
+        job.update(
+            cursor=current_cursor or spec["initial_cursor"],
+            done=False,
+            terminal=False,
+            terminal_reason=None,
+            completion_reason=None,
+            error=control_state.get("reason"),
+            error_code=control_state.get("reason"),
+        )
+        retry_at = datetime.fromtimestamp(control_state.get("retry_at") or time.time() + 900, UTC)
+        job["next_retry_at"] = retry_at.isoformat()
+        source_retry_at[source] = retry_at
+        unavailable_sources.add(source)
+        job["updated_at"] = now_utc().isoformat()
+        return
     if result.get("source_degraded"):
         # A failed page must be retried from the same cursor. Early
         # configuration errors do not carry a cursor at all.
@@ -1759,9 +1799,10 @@ def _apply_backfill_job_result(
         job["terminal_reason"] = None
         job["completion_reason"] = (
             "window_start_reached"
+            if job["done"] and bool((job.get("diagnostics") or {}).get("reached_window_start"))
+            else "source_exhausted"
             if job["done"]
-            and bool((job.get("diagnostics") or {}).get("reached_window_start"))
-            else "source_exhausted" if job["done"] else None
+            else None
         )
         job["next_retry_at"] = None
         if not job["done"] and not job.get("cursor"):
@@ -1976,9 +2017,7 @@ def backfill_active_topics(
             job["page_limit"] = int(spec["page_limit"])
             job["sampling_mode"] = spec.get("sampling_mode")
         else:
-            job["page_limit"] = max(
-                int(job.get("page_limit") or 0), int(spec["page_limit"])
-            )
+            job["page_limit"] = max(int(job.get("page_limit") or 0), int(spec["page_limit"]))
         job.setdefault("attempts", int(job.get("pages") or 0))
         job.setdefault("terminal", False)
         job.setdefault("terminal_reason", None)
@@ -2051,11 +2090,7 @@ def backfill_active_topics(
     unavailable_sources: set[str] = set()
     attempted_jobs = 0
     attempted_jobs_by_source: dict[str, int] = {}
-    parallel_mode = (
-        source_concurrency > 1
-        and one_batch_per_job
-        and max_jobs_per_source == 1
-    )
+    parallel_mode = source_concurrency > 1 and one_batch_per_job and max_jobs_per_source == 1
     parallel_attempts: list[dict[str, Any]] = []
     next_job_key = state.get("next_job_key")
     start_index = next(
@@ -2123,9 +2158,7 @@ def backfill_active_topics(
                         job["updated_at"] = now_utc().isoformat()
                         _save_backfill_state(state_path, state)
                         break
-                    reached_start = bool(
-                        (job.get("diagnostics") or {}).get("reached_window_start")
-                    )
+                    reached_start = bool((job.get("diagnostics") or {}).get("reached_window_start"))
                     job["done"] = reached_start
                     job["error"] = (
                         None
@@ -2137,9 +2170,7 @@ def backfill_active_topics(
                     job["terminal_reason"] = (
                         "window_start_reached" if reached_start else "partial_budget_exhausted"
                     )
-                    job["completion_reason"] = (
-                        "window_start_reached" if reached_start else None
-                    )
+                    job["completion_reason"] = "window_start_reached" if reached_start else None
                     job["next_retry_at"] = None
                     job["updated_at"] = now_utc().isoformat()
                     _save_backfill_state(state_path, state)
@@ -2295,6 +2326,7 @@ def run_core_pipeline(
     settings: Settings | None = None,
     analysis_since: datetime | None = None,
     analysis_until: datetime | None = None,
+    resolve_all: bool = False,
 ) -> dict[str, Any]:
     settings = settings or get_settings()
     finish_timer = timer("job_duration_seconds")
@@ -2306,14 +2338,24 @@ def run_core_pipeline(
         settings.analysis_model,
     )
     stage_started = time.monotonic()
-    normalized = normalize_pending(session, limit=limit, settings=settings)
+    normalized_content_ids: list[int] = []
+    normalized = normalize_pending(
+        session,
+        limit=limit,
+        settings=settings,
+        normalized_content_ids=normalized_content_ids,
+    )
     logger.info(
         "event=pipeline_stage_completed stage=normalize count=%d elapsed_seconds=%.3f",
         normalized,
         time.monotonic() - stage_started,
     )
     stage_started = time.monotonic()
-    resolved = resolve_pending_entities(session, limit=limit)
+    resolved = resolve_pending_entities(
+        session,
+        limit=limit,
+        content_ids=None if resolve_all else normalized_content_ids,
+    )
     logger.info(
         "event=pipeline_stage_completed stage=resolve count=%d elapsed_seconds=%.3f",
         resolved,

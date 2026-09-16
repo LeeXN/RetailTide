@@ -8,9 +8,11 @@ xiaohongshu_discovery:
 
 topics:
   - slug: gold
+    reference_assets: ["518880", "159934"]
     name: 黄金
     status: active
-    aliases: [gold, 黄金, 金价, 黄金ETF, 贵金属, gold etf]
+    aliases: [gold, 黄金, 金价, 黄金ETF, gold etf]
+    retired_aliases: [贵金属]
     source_queries:
       zhihu: 黄金 股票 ETF 金价
       xiaohongshu: 黄金 金价 ETF 投资
@@ -26,6 +28,7 @@ topics:
         mode: hot
         max_items: 200
   - slug: broad-a-share
+    reference_assets: ["510210", "510760"]
     name: A股大盘
     status: active
     aliases: [A股大盘, 大盘, 上证指数, 沪指, CSI300]
@@ -41,6 +44,7 @@ topics:
     source_max_pages:
       guba: 5000
   - slug: nasdaq
+    reference_assets: [QQQ, QQQM]
     name: 纳斯达克
     status: active
     aliases: [纳斯达克, Nasdaq, NASDAQ, 纳指]
@@ -51,6 +55,7 @@ topics:
     source_query_variants:
       xiaohongshu: [纳指ETF 定投, 纳斯达克 加仓, QQQ 投资, 纳指 亏损]
   - slug: ai
+    reference_assets: ["159819", "515070"]
     name: AI
     status: active
     aliases: [AI, ai, 人工智能, 大模型]
@@ -63,6 +68,7 @@ topics:
     source_max_pages:
       taoguba: 300
   - slug: humanoid-robot
+    reference_assets: ["159770", "562500"]
     name: 人形机器人
     status: active
     aliases: [人形机器人, 机器人, humanoid robot]
@@ -73,9 +79,10 @@ topics:
     source_query_variants:
       xiaohongshu: [人形机器人 概念股, 机器人ETF, 机器人 股票 持仓, 特斯拉机器人 股票]
   - slug: semiconductor
+    reference_assets: ["159813", "159801"]
     name: 半导体
     status: active
-    aliases: [半导体, 芯片, semiconductor]
+    aliases: [半导体, 芯片, semiconductor, 国产GPU, HBM, 存储芯片, DRAM, NAND, 先进封装, Chiplet, 半导体设备, 半导体材料]
     source_queries:
       guba: 芯片
       zhihu: 半导体 股票 ETF 投资
@@ -84,6 +91,7 @@ topics:
     source_query_variants:
       xiaohongshu: [半导体ETF, 芯片 股票 持仓, 存储芯片 概念股, 国产芯片 投资]
   - slug: innovative-drug
+    reference_assets: ["159992", "515120"]
     name: 创新药
     status: active
     aliases: [创新药, 医药, biotech]
@@ -94,6 +102,7 @@ topics:
     source_query_variants:
       xiaohongshu: [创新药ETF, 医药 股票 持仓, 创新药 概念股, 药明康德 股票]
   - slug: new-energy
+    reference_assets: ["516160", "516850"]
     name: 新能源
     status: active
     aliases: [新能源, 光伏, 锂电]
@@ -104,6 +113,7 @@ topics:
     source_query_variants:
       xiaohongshu: [新能源ETF, 光伏 股票 持仓, 锂电池 概念股, 新能源车 股票]
   - slug: liquor
+    reference_assets: ["512690", "600519"]
     name: 白酒
     status: active
     aliases: [白酒, 消费白马]
@@ -116,6 +126,7 @@ topics:
     source_max_pages:
       guba: 1200
   - slug: hang-seng-tech
+    reference_assets: ["513180", "159740"]
     name: 恒生科技
     status: active
     aliases: [恒生科技, 港股科技, HSTECH]
@@ -125,3 +136,105 @@ topics:
       wikimedia-pageviews: 恒生科技指數
     source_query_variants:
       xiaohongshu: [恒生科技ETF, 港股科技 加仓, 恒科ETF 定投, 港股互联网 股票]
+  - slug: software-ai
+    name: 软件与AI应用
+    status: active
+    reference_assets: ["515230", "159899"]
+    aliases: [软件ETF, AI应用, 智能体, AI办公, AI编程, AI营销, 软件服务, Agent]
+    source_queries:
+      guba: "515230"
+      taoguba: AI应用
+      wikimedia-pageviews: 软件产业
+  - slug: consumer-electronics
+    name: 消费电子与电子制造
+    status: active
+    reference_assets: ["159732", "159779"]
+    aliases: [消费电子, PCB, 覆铜板, 电子布, MLCC, 被动元件, 电子元件, AI手机, AIPC, AI眼镜]
+    source_queries:
+      guba: "159732"
+      taoguba: 消费电子
+      wikimedia-pageviews: 消费电子产品
+  - slug: communication
+    name: 通信设备与光互联
+    status: active
+    reference_assets: ["515880", "515050"]
+    aliases: [通信设备, 光模块, CPO, 硅光, 光纤, 光缆, 光通信, 高速互联, 铜缆连接]
+    source_queries:
+      guba: "515880"
+      taoguba: 光通信
+      wikimedia-pageviews: 光纤通信
+  - slug: industrial-metals
+    name: 工业有色金属
+    status: active
+    reference_assets: ["560860", "159162"]
+    aliases: [工业有色, 有色金属, 铜价, 铜矿, 电解铜, 铝价, 电解铝, 氧化铝, 稀土, 永磁, 钨价, 钨矿, 钼价, 钼矿, 小金属, 稀有金属, 金属锑, 金属镓, 金属锗]
+    source_queries:
+      guba: "560860"
+      taoguba: 有色金属
+      wikimedia-pageviews: 有色金属
+  - slug: liquid-cooling
+    name: 液冷散热
+    status: active
+    reference_assets: ["002837", "301018"]
+    aliases: [液冷, 冷板, 冷却液, 液冷CDU, 数据中心散热, 服务器散热]
+    source_queries:
+      guba: "002837"
+      taoguba: 液冷
+      wikimedia-pageviews: 液体冷却
+  - slug: data-center-power
+    name: 数据中心电源
+    status: active
+    reference_assets: ["300870", "002335"]
+    aliases: [服务器电源, 数据中心电源, 数据中心供电, 高压直流电源, HVDC, UPS电源, 不间断电源]
+    source_queries:
+      guba: "300870"
+      taoguba: 服务器电源
+      wikimedia-pageviews: 不间断电源
+  - slug: power-grid
+    name: 电网设备与特高压
+    status: active
+    reference_assets: ["159320", "159326"]
+    aliases: [电网设备, 特高压, 智能电网, 配电网, 输配电, 电网投资]
+    source_queries:
+      guba: 电网设备
+      taoguba: 特高压
+      wikimedia-pageviews: 特高压
+    source_max_pages:
+      guba: 2
+      taoguba: 1
+  - slug: defense-aerospace
+    name: 军工与航空航天
+    status: active
+    reference_assets: ["512660", "159267"]
+    aliases: [军工, 国防军工, 航天, 商业航天, 卫星互联网, 低空经济, 通用航空]
+    source_queries:
+      guba: 军工
+      taoguba: 商业航天
+      wikimedia-pageviews: 航天
+    source_max_pages:
+      guba: 2
+      taoguba: 1
+  - slug: smart-auto
+    name: 智能汽车与自动驾驶
+    status: active
+    reference_assets: ["159889", "516520"]
+    aliases: [智能汽车, 智能驾驶, 自动驾驶, 车路云, 汽车芯片, 激光雷达, 智驾]
+    source_queries:
+      guba: 智能汽车
+      taoguba: 自动驾驶
+      wikimedia-pageviews: 自动驾驶
+    source_max_pages:
+      guba: 2
+      taoguba: 1
+  - slug: oil-gas
+    name: 油气与石油化工
+    status: active
+    reference_assets: ["159019", "159697"]
+    aliases: [石油, 石油天然气, 油气, 原油, 油气ETF, 石化, 石油化工, 炼化]
+    source_queries:
+      guba: 石油
+      taoguba: 油气
+      wikimedia-pageviews: 石油
+    source_max_pages:
+      guba: 2
+      taoguba: 1

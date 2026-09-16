@@ -327,6 +327,7 @@ def create_app(*, engine=None, settings: Settings | None = None) -> FastAPI:
                 selected_date=selected_date,
                 history_start_date=history_start_date,
                 expected_sources=expected_overview_sources,
+                config_dir=settings.config_dir,
             )
 
     def warm_closed_overview() -> None:
@@ -802,6 +803,16 @@ def create_app(*, engine=None, settings: Settings | None = None) -> FastAPI:
                             "archive_status_counts": archive_status_counts,
                         }
                     )
+                if source.name == "xiaohongshu":
+                    from ..sources.xhs_control import XhsControl
+
+                    control = XhsControl().read()
+                    evidence["collection_control"] = {
+                        "paused": bool(control.get("paused")),
+                        "reason": control.get("reason"),
+                        "retry_at": control.get("retry_at") or None,
+                        "consecutive_failures": control.get("failures", 0),
+                    }
                 result.append(
                     {
                         "id": source.id,

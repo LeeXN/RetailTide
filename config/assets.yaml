@@ -70,15 +70,16 @@ assets:
       - {value: Nasdaq 100 ETF, type: name, priority: 10}
   - market: CN
     symbol: "159869"
-    name: AI ETF
-    topics: [ai]
+    name: 华夏中证动漫游戏ETF
+    # Retain the real security and its bars; this was never an AI ETF.
+    retired_aliases: [AI, 人工智能]
     asset_type: etf
     currency: CNY
     timezone: Asia/Shanghai
     benchmark: "000001"
     aliases:
-      - {value: AI, type: concept, priority: 30}
-      - {value: 人工智能, type: concept, priority: 20}
+      - {value: 华夏游戏ETF, type: name, priority: 10}
+      - {value: "159869", type: ticker, priority: 1}
   - market: CN
     symbol: "159770"
     name: 机器人ETF
@@ -144,3 +145,400 @@ assets:
     aliases:
       - {value: 酒ETF, type: name, priority: 10}
       - {value: 白酒, type: concept, priority: 20}
+
+  - market: CN
+    symbol: "159934"
+    name: 易方达黄金ETF
+    topics: [gold]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 上海黄金交易所Au99.99
+    aliases:
+      - {value: "159934", type: ticker, priority: 1}
+      - {value: 易方达黄金ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "510210"
+    name: 富国上证综指ETF
+    topics: [broad-a-share]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 上证综合指数
+    aliases:
+      - {value: "510210", type: ticker, priority: 1}
+      - {value: 富国上证综指ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "510760"
+    name: 国泰上证综指ETF
+    topics: [broad-a-share]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 上证综合指数
+    aliases:
+      - {value: "510760", type: ticker, priority: 1}
+      - {value: 国泰上证综指ETF, type: name, priority: 10}
+
+  - market: US
+    symbol: "QQQM"
+    name: Invesco NASDAQ 100 ETF
+    topics: [nasdaq]
+    asset_type: etf
+    currency: USD
+    timezone: America/New_York
+    index_name: Nasdaq-100
+    aliases:
+      - {value: "QQQM", type: ticker, priority: 1}
+      - {value: Invesco NASDAQ 100 ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159819"
+    name: 易方达人工智能ETF
+    topics: [ai]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证人工智能主题指数
+    aliases:
+      - {value: "159819", type: ticker, priority: 1}
+      - {value: 易方达人工智能ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "515070"
+    name: 华夏人工智能ETF
+    topics: [ai]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证人工智能主题指数
+    aliases:
+      - {value: "515070", type: ticker, priority: 1}
+      - {value: 华夏人工智能ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "562500"
+    name: 华夏机器人ETF
+    topics: [humanoid-robot]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证机器人指数
+    aliases:
+      - {value: "562500", type: ticker, priority: 1}
+      - {value: 华夏机器人ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159801"
+    name: 广发半导体芯片ETF
+    topics: [semiconductor]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 国证半导体芯片指数
+    aliases:
+      - {value: "159801", type: ticker, priority: 1}
+      - {value: 广发半导体芯片ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "515120"
+    name: 广发创新药ETF
+    topics: [innovative-drug]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证创新药产业指数
+    aliases:
+      - {value: "515120", type: ticker, priority: 1}
+      - {value: 广发创新药ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "516850"
+    name: 华夏新能源ETF
+    topics: [new-energy]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证新能源指数
+    aliases:
+      - {value: "516850", type: ticker, priority: 1}
+      - {value: 华夏新能源ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159740"
+    name: 大成恒生科技ETF
+    topics: [hang-seng-tech]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    index_name: 恒生科技指数
+    aliases:
+      - {value: "159740", type: ticker, priority: 1}
+      - {value: 大成恒生科技ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "515230"
+    name: 国泰软件ETF
+    topics: [software-ai]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证全指软件指数
+    aliases:
+      - {value: "515230", type: ticker, priority: 1}
+      - {value: 国泰软件ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159899"
+    name: 招商软件ETF
+    topics: [software-ai]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证全指软件指数
+    aliases:
+      - {value: "159899", type: ticker, priority: 1}
+      - {value: 招商软件ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159732"
+    name: 华夏消费电子ETF
+    topics: [consumer-electronics]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 国证消费电子主题指数
+    aliases:
+      - {value: "159732", type: ticker, priority: 1}
+      - {value: 华夏消费电子ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159779"
+    name: 招商消费电子ETF
+    topics: [consumer-electronics]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证消费电子主题指数
+    aliases:
+      - {value: "159779", type: ticker, priority: 1}
+      - {value: 招商消费电子ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "515880"
+    name: 国泰通信ETF
+    topics: [communication]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证全指通信设备指数
+    aliases:
+      - {value: "515880", type: ticker, priority: 1}
+      - {value: 国泰通信ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "515050"
+    name: 华夏5G通信ETF
+    topics: [communication]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证5G通信主题指数
+    aliases:
+      - {value: "515050", type: ticker, priority: 1}
+      - {value: 华夏5G通信ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "560860"
+    name: 万家工业有色ETF
+    topics: [industrial-metals]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证工业有色金属主题指数
+    aliases:
+      - {value: "560860", type: ticker, priority: 1}
+      - {value: 万家工业有色ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159162"
+    name: 鹏华工业有色ETF
+    topics: [industrial-metals]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证工业有色金属主题指数
+    aliases:
+      - {value: "159162", type: ticker, priority: 1}
+      - {value: 鹏华工业有色ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "002837"
+    name: 英维克
+    topics: [liquid-cooling]
+    asset_type: stock
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: "002837", type: ticker, priority: 1}
+      - {value: 英维克, type: name, priority: 10}
+
+  - market: CN
+    symbol: "301018"
+    name: 申菱环境
+    topics: [liquid-cooling]
+    asset_type: stock
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: "301018", type: ticker, priority: 1}
+      - {value: 申菱环境, type: name, priority: 10}
+
+  - market: CN
+    symbol: "300870"
+    name: 欧陆通
+    topics: [data-center-power]
+    asset_type: stock
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: "300870", type: ticker, priority: 1}
+      - {value: 欧陆通, type: name, priority: 10}
+
+  - market: CN
+    symbol: "002335"
+    name: 科华数据
+    topics: [data-center-power]
+    asset_type: stock
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    aliases:
+      - {value: "002335", type: ticker, priority: 1}
+      - {value: 科华数据, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159320"
+    name: 电网设备ETF广发
+    topics: [power-grid]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 恒生A股电网设备指数
+    aliases:
+      - {value: "159320", type: ticker, priority: 1}
+      - {value: 电网设备ETF广发, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159326"
+    name: 电网设备ETF华夏
+    topics: [power-grid]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证电网设备主题指数
+    aliases:
+      - {value: "159326", type: ticker, priority: 1}
+      - {value: 电网设备ETF华夏, type: name, priority: 10}
+
+  - market: CN
+    symbol: "512660"
+    name: 军工ETF国泰
+    topics: [defense-aerospace]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证军工指数
+    aliases:
+      - {value: "512660", type: ticker, priority: 1}
+      - {value: 军工ETF国泰, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159267"
+    name: 航天ETF华安
+    topics: [defense-aerospace]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 国证航天航空行业指数
+    aliases:
+      - {value: "159267", type: ticker, priority: 1}
+      - {value: 航天ETF华安, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159889"
+    name: 智能汽车ETF国泰
+    topics: [smart-auto]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证智能汽车主题指数
+    aliases:
+      - {value: "159889", type: ticker, priority: 1}
+      - {value: 智能汽车ETF国泰, type: name, priority: 10}
+
+  - market: CN
+    symbol: "516520"
+    name: 智能驾驶ETF华泰柏瑞
+    topics: [smart-auto]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 中证智能汽车主题指数
+    aliases:
+      - {value: "516520", type: ticker, priority: 1}
+      - {value: 智能驾驶ETF华泰柏瑞, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159019"
+    name: 华宝国证石油天然气ETF
+    topics: [oil-gas]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 国证石油天然气指数
+    aliases:
+      - {value: "159019", type: ticker, priority: 1}
+      - {value: 华宝国证石油天然气ETF, type: name, priority: 10}
+
+  - market: CN
+    symbol: "159697"
+    name: 石油ETF鹏华
+    topics: [oil-gas]
+    asset_type: etf
+    currency: CNY
+    timezone: Asia/Shanghai
+    benchmark: "000001"
+    index_name: 国证石油天然气指数
+    aliases:
+      - {value: "159697", type: ticker, priority: 1}
+      - {value: 石油ETF鹏华, type: name, priority: 10}

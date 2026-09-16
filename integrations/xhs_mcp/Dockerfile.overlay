@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=retailtide/xiaohongshu-mcp-arm64:v2.5.0-6583124
+FROM ${BASE_IMAGE}
+LABEL org.opencontainers.image.revision="6583124dfda92312b6bc19a042a6acfae63fe498" \
+      io.retailtide.patch="read-lifecycle-20260915"
+COPY --chmod=0755 xiaohongshu-mcp /app/xiaohongshu-mcp
