@@ -195,7 +195,7 @@ def test_all_topic_retry_skips_completed_and_resumes_failed_cursor(session, sett
     )
 
     assert second[0]["skip_reason"] == "checkpoint_complete"
-    assert len(calls) == 9
+    assert len(calls) == 19
     assert calls[0]["start_cursor"] == "resume-page-3"
     assert all(row["resume"]["status"] == "complete" for row in second)
 
@@ -2021,8 +2021,8 @@ async def test_xiaohongshu_spider_detail_failure_uses_mcp_once():
             502,
             json={
                 "success": False,
-                "error_code": "response_invalid",
-                "message": "note detail response is empty",
+                "error_code": "upstream_timeout",
+                "message": "note detail request timed out",
                 "retryable": True,
                 "retry_after_seconds": 900,
                 "transport": "spider",
@@ -2066,12 +2066,12 @@ async def test_xiaohongshu_spider_detail_failure_uses_mcp_once():
     assert [item.source_item_id for item in result.items] == ["mcp-detail-note"]
     assert detail_calls == ["spider", "mcp"]
     assert result.diagnostics["fallback_details"] == 1
-    assert result.diagnostics["detail_error_codes"] == {"spider:response_invalid": 1}
+    assert result.diagnostics["detail_error_codes"] == {"spider:upstream_timeout": 1}
     assert result.warnings == []
 
 
 @pytest.mark.asyncio
-async def test_xiaohongshu_expired_spider_session_uses_logged_in_mcp_for_recent_day():
+async def test_xiaohongshu_expired_spider_session_does_not_use_mcp():
     mcp_calls: list[str] = []
     published_ms = int(datetime(2026, 8, 28, 5, 0, tzinfo=UTC).timestamp() * 1000)
 
@@ -2131,20 +2131,14 @@ async def test_xiaohongshu_expired_spider_session_uses_logged_in_mcp_for_recent_
         min_request_interval=0,
         clock=lambda: datetime(2026, 8, 31, 2, 0, tzinfo=UTC),
     )
-    result = await source.collect(
-        "股票",
-        datetime(2026, 8, 27, 16, 0, tzinfo=UTC),
-        xiaohongshu_spider_cursor("最新", "stale-page-2"),
-        until=datetime(2026, 8, 28, 16, 0, tzinfo=UTC),
-    )
-
-    assert [item.source_item_id for item in result.items] == ["recent-mcp-note"]
-    assert mcp_calls == ["/api/v1/feeds/search", "/api/v1/feeds/detail"]
-    assert result.partial is False
-    assert result.diagnostics["search_transport"] == "mcp"
-    assert result.diagnostics["fallback_reason"] == "spider_auth_required"
-    assert result.diagnostics["discarded_spider_cursor"] is True
-    assert "used logged-in MCP first-page fallback" in result.warnings[0]
+    with pytest.raises(SourceError, match="登录已过期"):
+        await source.collect(
+            "股票",
+            datetime(2026, 8, 27, 16, 0, tzinfo=UTC),
+            xiaohongshu_spider_cursor("最新", "stale-page-2"),
+            until=datetime(2026, 8, 28, 16, 0, tzinfo=UTC),
+        )
+    assert mcp_calls == []
 
 
 def test_xiaohongshu_old_single_day_uses_a_covering_relative_filter():
@@ -3300,6 +3294,41 @@ def test_collection_query_topic_is_preserved_outside_raw_payload(session):
     assert "collection_query" not in raw.payload
     assert entity is not None
     assert entity.method == "collection_query"
+
+
+def test_resolve_pending_entities_can_limit_reparsing_to_new_content(session):
+    source = session.scalar(select(Source).where(Source.name == "guba"))
+    topic = session.scalar(select(Topic).where(Topic.slug == "power-grid"))
+    contents = []
+    for item_id in ("historical-grid-content", "new-grid-content"):
+        raw = RawObservationSchema(
+            source="guba",
+            source_item_id=item_id,
+            observation_kind="forum_post",
+            published_at=datetime(2026, 9, 1, tzinfo=UTC),
+            observed_at=datetime(2026, 9, 2, tzinfo=UTC),
+            payload={"title": "电网设备讨论", "body": "电网设备和特高压值得关注。"},
+        )
+        stored, _inserted = insert_raw_observation(session, source.id, raw)
+        contents.append(normalize_raw_observation(session, stored))
+    session.commit()
+
+    resolve_pending_entities(session, content_ids=[contents[1].id])
+
+    assert session.scalar(
+        select(ContentEntity.id).where(
+            ContentEntity.content_id == contents[0].id,
+            ContentEntity.entity_type == "topic",
+            ContentEntity.entity_id == topic.id,
+        )
+    ) is None
+    assert session.scalar(
+        select(ContentEntity.id).where(
+            ContentEntity.content_id == contents[1].id,
+            ContentEntity.entity_type == "topic",
+            ContentEntity.entity_id == topic.id,
+        )
+    ) is not None
 
 
 def test_discovery_consumer_content_is_traceable_but_excluded_from_market_topic(session):

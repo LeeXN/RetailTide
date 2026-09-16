@@ -308,16 +308,20 @@ The service listens on `127.0.0.1:8000` by default. Use an authenticated reverse
 
 | Timer | Schedule | Job |
 | --- | --- | --- |
-| `retail-tide-posts-yesterday.timer` | Daily at 03:00 `Asia/Shanghai` | Collect and analyze the previous Shanghai date; synchronize market data |
+| `retail-tide-posts-yesterday.timer` | Daily at 03:00 `Asia/Shanghai` | Previous Shanghai date, excluding Xiaohongshu; synchronize market data |
+| `retail-tide-xiaohongshu-yesterday.timer` | Daily at 07:30 `Asia/Shanghai` | Xiaohongshu collection and analysis only |
 | `retail-tide-wikimedia-yesterday.timer` | Daily at 04:00 UTC | Collect Wikimedia data for the previous UTC date |
 
 ```bash
 sudo install -m 0644 deploy/retail-tide-posts.service /etc/systemd/system/
 sudo install -m 0644 deploy/retail-tide-posts-yesterday.timer /etc/systemd/system/
+sudo install -m 0644 deploy/retail-tide-xiaohongshu.service /etc/systemd/system/
+sudo install -m 0644 deploy/retail-tide-xiaohongshu-yesterday.timer /etc/systemd/system/
 sudo install -m 0644 deploy/retail-tide-wikimedia.service /etc/systemd/system/
 sudo install -m 0644 deploy/retail-tide-wikimedia-yesterday.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now retail-tide-posts-yesterday.timer
+sudo systemctl enable --now retail-tide-xiaohongshu-yesterday.timer
 sudo systemctl enable --now retail-tide-wikimedia-yesterday.timer
 systemctl list-timers --all 'retail-tide-posts-*'
 systemctl list-timers --all 'retail-tide-wikimedia-*'
@@ -326,6 +330,10 @@ systemctl list-timers --all 'retail-tide-wikimedia-*'
 Timers use `Persistent=true`. If a source failure pins the posts job to an older date across later timer events, the job catches up each closed Shanghai date after that pinned date succeeds. If the host was down before any pinned state was created, run `refresh --date` for each missed date. Older deployments must disable and remove `retail-tide-posts-today.timer`.
 
 ### Xiaohongshu deployment references
+
+Run `retail-tide split-xiaohongshu-schedule` with collectors idle before switching schedules. It copies daily progress and preserves the originals. Container deployments must use their actual Compose commands.
+
+Search/page cooldowns default to 60 seconds, detail cooldown to 30 seconds, plus 0–10 seconds jitter; sample targets stay unchanged. Configure `RETAIL_TIDE_XIAOHONGSHU_{SEARCH,PAGE,DETAIL}_COOLDOWN`; `MIN_INTERVAL` remains a lower bound. `RETAIL_TIDE_XIAOHONGSHU_TOTAL_BUDGET` defaults to 900 seconds. Login/verification pauses survive restarts; after owner-managed recovery, `retail-tide xiaohongshu-resume` clears the pause without starting collection. Rate limits back off 1/2/4/8 hours, honoring longer server delays. `/sources/status` exposes `evidence.collection_control`. The independent job retries lock contention every 15 minutes and has a 12-hour hard limit.
 
 - [`xiaohongshu-mcp` Linux ARM64 adaptation notes](docs/xiaohongshu-mcp-arm64.md)
 - [Manual SMS verification through noVNC](docs/xiaohongshu-novnc-login.md)

@@ -34,14 +34,19 @@ def event_signal_time(session: Session, event: SignalEvent):
 
 
 def _assets_for_event(session: Session, event: SignalEvent) -> list[Asset]:
+    # Keep the explicitly mentioned security and evaluate topic references
+    # separately, so a second ETF is a comparison rather than another event.
+    ids = (
+        set(
+            session.scalars(
+                select(AssetTopic.asset_id).where(AssetTopic.topic_id == event.topic_id)
+            ).all()
+        )
+        if event.topic_id is not None
+        else set()
+    )
     if event.asset_id is not None:
-        asset = session.get(Asset, event.asset_id)
-        return [asset] if asset else []
-    if event.topic_id is None:
-        return []
-    ids = session.scalars(
-        select(AssetTopic.asset_id).where(AssetTopic.topic_id == event.topic_id)
-    ).all()
+        ids.add(event.asset_id)
     return session.scalars(select(Asset).where(Asset.id.in_(ids))).all() if ids else []
 
 

@@ -776,7 +776,7 @@ _HTML = r"""<!doctype html>
       const assets = row.assets?.length ? row.assets : row.asset ? [row.asset] : [];
       if (!assets.length) return null;
       const requested = Number(state.assetChoice[row.slug]);
-      return assets.find((asset) => asset.id === requested) || assets.find((asset) => asset.has_price_data) || assets[0];
+      return assets.find((asset) => asset.id === requested) || assets.find((asset) => asset.is_primary) || assets[0];
     }
     function coverageBlock(row, asset = null) {
       const coverage = row?.history_coverage || {};

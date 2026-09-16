@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import and_, delete, exists, select, update
+from sqlalchemy import and_, delete, exists, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
@@ -14,6 +14,7 @@ from ..models import (
     AnalysisTask,
     ArchiveLookupState,
     ArchiveSnapshot,
+    AssetTopic,
     Content,
     ContentAnalysis,
     ContentAnalysisReview,
@@ -28,6 +29,8 @@ from ..models import (
     SignalEvent,
     Source,
     Topic,
+    TrendObservation,
+    TrendSignal,
 )
 from ..models import RawObservation as StoredRawObservation
 from ..schemas import RawObservation
@@ -51,6 +54,175 @@ _VERIFIABLE_SOURCE_TIME = {
         "source_timezone": "unix_epoch_utc",
     },
 }
+
+
+def clear_topic_history(
+    session: Session,
+    *,
+    topic_slugs: set[str],
+    keep_from: datetime,
+) -> dict[str, int]:
+    """Remove only pre-cutoff derived tags and metrics for newly introduced topics.
+
+    Immutable RawObservation and Content rows remain untouched. The cutoff is a
+    publication-time boundary, so content published on the retained Shanghai
+    day is not altered even when it was collected later.
+    """
+
+    if not topic_slugs:
+        return {}
+    topics = session.scalars(select(Topic).where(Topic.slug.in_(topic_slugs))).all()
+    topic_ids = {topic.id for topic in topics}
+    if not topic_ids:
+        raise ValueError("no matching topics to clear")
+    asset_ids = set(
+        session.scalars(select(AssetTopic.asset_id).where(AssetTopic.topic_id.in_(topic_ids))).all()
+    )
+    old_content_ids = select(Content.id).where(Content.published_at < keep_from)
+    tag_ids = select(ContentEntity.id).where(
+        ContentEntity.content_id.in_(old_content_ids),
+        or_(
+            and_(
+                ContentEntity.entity_type == "topic",
+                ContentEntity.entity_id.in_(topic_ids),
+            ),
+            and_(
+                ContentEntity.entity_type == "asset",
+                ContentEntity.entity_id.in_(asset_ids),
+            )
+            if asset_ids
+            else False,
+        ),
+    )
+    counts: dict[str, int] = {
+        "content_tags": int(
+            session.execute(delete(ContentEntity).where(ContentEntity.id.in_(tag_ids))).rowcount
+            or 0
+        )
+    }
+
+    metric_ids = set(
+        session.scalars(
+            select(PlatformMetric.id).where(
+                PlatformMetric.topic_id.in_(topic_ids),
+                PlatformMetric.bucket_at < keep_from,
+            )
+        ).all()
+    )
+    signal_ids = (
+        set(
+            session.scalars(
+                select(MetricSignal.id).where(MetricSignal.platform_metric_id.in_(metric_ids))
+            ).all()
+        )
+        if metric_ids
+        else set()
+    )
+    event_ids = set(
+        session.scalars(
+            select(SignalEvent.id).where(
+                SignalEvent.started_at < keep_from,
+                or_(
+                    SignalEvent.topic_id.in_(topic_ids),
+                    SignalEvent.asset_id.in_(asset_ids),
+                )
+                if asset_ids
+                else SignalEvent.topic_id.in_(topic_ids),
+            )
+        ).all()
+    )
+    counts["event_returns"] = (
+        int(
+            session.execute(delete(EventReturn).where(EventReturn.event_id.in_(event_ids))).rowcount
+            or 0
+        )
+        if event_ids
+        else 0
+    )
+    counts["event_metric_links"] = (
+        int(
+            session.execute(
+                delete(EventMetricLink).where(
+                    or_(
+                        EventMetricLink.event_id.in_(event_ids),
+                        EventMetricLink.metric_signal_id.in_(signal_ids),
+                    )
+                )
+            ).rowcount
+            or 0
+        )
+        if event_ids or signal_ids
+        else 0
+    )
+    counts["events"] = (
+        int(session.execute(delete(SignalEvent).where(SignalEvent.id.in_(event_ids))).rowcount or 0)
+        if event_ids
+        else 0
+    )
+    counts["diffusion_events"] = int(
+        session.execute(
+            delete(DiffusionEvent).where(
+                DiffusionEvent.started_at < keep_from,
+                or_(
+                    DiffusionEvent.topic_id.in_(topic_ids),
+                    DiffusionEvent.asset_id.in_(asset_ids),
+                )
+                if asset_ids
+                else DiffusionEvent.topic_id.in_(topic_ids),
+            )
+        ).rowcount
+        or 0
+    )
+    counts["metric_signals"] = (
+        int(
+            session.execute(delete(MetricSignal).where(MetricSignal.id.in_(signal_ids))).rowcount
+            or 0
+        )
+        if signal_ids
+        else 0
+    )
+    counts["platform_metrics"] = (
+        int(
+            session.execute(
+                delete(PlatformMetric).where(PlatformMetric.id.in_(metric_ids))
+            ).rowcount
+            or 0
+        )
+        if metric_ids
+        else 0
+    )
+    trend_ids = set(
+        session.scalars(
+            select(TrendObservation.id).where(
+                TrendObservation.topic_id.in_(topic_ids),
+                TrendObservation.observed_at < keep_from,
+            )
+        ).all()
+    )
+    counts["trend_signals"] = (
+        int(
+            session.execute(
+                delete(TrendSignal).where(TrendSignal.trend_observation_id.in_(trend_ids))
+            ).rowcount
+            or 0
+        )
+        if trend_ids
+        else 0
+    )
+    counts["trend_observations"] = (
+        int(
+            session.execute(
+                delete(TrendObservation).where(TrendObservation.id.in_(trend_ids))
+            ).rowcount
+            or 0
+        )
+        if trend_ids
+        else 0
+    )
+    session.commit()
+    counts["topics"] = len(topic_ids)
+    counts["assets"] = len(asset_ids)
+    return counts
 
 
 def remove_misnormalized_zhihu_snapshots(session: Session) -> dict[str, int]:
@@ -88,9 +260,7 @@ def remove_misnormalized_zhihu_snapshots(session: Session) -> dict[str, int]:
     entities = session.execute(
         delete(ContentEntity).where(ContentEntity.content_id.in_(content_ids))
     ).rowcount
-    session.execute(
-        delete(ArchiveSnapshot).where(ArchiveSnapshot.content_id.in_(content_ids))
-    )
+    session.execute(delete(ArchiveSnapshot).where(ArchiveSnapshot.content_id.in_(content_ids)))
     session.execute(
         delete(ArchiveLookupState).where(ArchiveLookupState.content_id.in_(content_ids))
     )
@@ -173,12 +343,8 @@ def import_verified_raw_history(
     source_engine = make_engine(url=_sqlite_url(source_database))
     source_session = session_factory(source_engine)()
     try:
-        source_rows = {
-            row.id: row.name for row in source_session.scalars(select(Source)).all()
-        }
-        topic_rows = {
-            row.id: row.slug for row in source_session.scalars(select(Topic)).all()
-        }
+        source_rows = {row.id: row.name for row in source_session.scalars(select(Source)).all()}
+        topic_rows = {row.id: row.slug for row in source_session.scalars(select(Topic)).all()}
         raw_rows = source_session.scalars(
             select(StoredRawObservation).order_by(StoredRawObservation.id)
         ).all()
@@ -204,12 +370,8 @@ def import_verified_raw_history(
                 if slug:
                     topic_links[key][slug] = match.collection_query
 
-        target_sources = {
-            row.name: row for row in target.scalars(select(Source)).all()
-        }
-        target_topics = {
-            row.slug: row for row in target.scalars(select(Topic)).all()
-        }
+        target_sources = {row.name: row for row in target.scalars(select(Source)).all()}
+        target_topics = {row.slug: row for row in target.scalars(select(Topic)).all()}
         inserted = duplicates = links_added = 0
         by_source: dict[str, dict[str, int]] = defaultdict(
             lambda: {"items": 0, "inserted": 0, "duplicates": 0, "topic_links_added": 0}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -343,9 +344,7 @@ class EntityResolver:
                 EntityMatch("topic", topic.id, "collection_query", 0.9, topic.name)
                 for topic in collection_topics
             )
-        matched_asset_ids = [
-            match.entity_id for match in matches if match.entity_type == "asset"
-        ]
+        matched_asset_ids = [match.entity_id for match in matches if match.entity_type == "asset"]
         if matched_asset_ids:
             asset_topics = self.session.scalars(
                 select(Topic)
@@ -393,13 +392,23 @@ class EntityResolver:
         return list(unique.values())
 
 
-def resolve_pending_entities(session: Session, *, limit: int = 500) -> int:
+def resolve_pending_entities(
+    session: Session,
+    *,
+    limit: int = 500,
+    content_ids: Sequence[int] | None = None,
+) -> int:
     resolver = EntityResolver(session)
-    # Entity links are derived and may change when aliases change, so this stage
-    # intentionally rechecks content. Prefer newest rows when a caller supplies
-    # a bounded limit; otherwise a growing database would repeatedly scan only
-    # the oldest rows and newly collected content would never become visible.
-    contents = session.scalars(select(Content).order_by(Content.id.desc()).limit(limit)).all()
+    query = select(Content).order_by(Content.id.desc())
+    if content_ids is None:
+        # A full historical pass remains available to explicit repair commands.
+        query = query.limit(limit)
+    else:
+        selected = list(dict.fromkeys(int(content_id) for content_id in content_ids))
+        if not selected:
+            return 0
+        query = query.where(Content.id.in_(selected))
+    contents = session.scalars(query).all()
     for content in contents:
         resolver.resolve_content(content)
     session.flush()

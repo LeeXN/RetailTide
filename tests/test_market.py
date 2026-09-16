@@ -310,5 +310,5 @@ def test_registry_replaces_stale_representative_asset_link(session, settings):
             .where(AssetTopic.topic_id == nasdaq.id)
         ).all()
     )
-    assert linked_symbols == {qqq.symbol}
+    assert linked_symbols == {qqq.symbol, "QQQM"}
     assert result["links_removed"] == 1

@@ -3,10 +3,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_xiaohongshu_has_separate_morning_schedule():
+    unit = (PROJECT_ROOT / "deploy/retail-tide-xiaohongshu.service").read_text()
+    timer = (PROJECT_ROOT / "deploy/retail-tide-xiaohongshu-yesterday.timer").read_text()
+    assert "scheduled-xiaohongshu --limit 50000" in unit
+    assert "RestartPreventExitStatus=78" in unit
+    assert "RestartSec=15min" in unit
+    assert "TimeoutStartSec=12h" in unit
+    assert "07:30:00 Asia/Shanghai" in timer
+    assert "Persistent=true" in timer
+
+
 def test_scheduled_service_uses_cli_lock_and_previous_day_timer() -> None:
-    unit = (PROJECT_ROOT / "deploy" / "retail-tide-posts.service").read_text(
-        encoding="utf-8"
-    )
+    unit = (PROJECT_ROOT / "deploy" / "retail-tide-posts.service").read_text(encoding="utf-8")
     timer = (PROJECT_ROOT / "deploy" / "retail-tide-posts-yesterday.timer").read_text(
         encoding="utf-8"
     )

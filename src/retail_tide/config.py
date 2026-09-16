@@ -430,6 +430,10 @@ class Settings:
     llm_fallback_timeout_seconds: float = 120.0
     source_concurrency: int = 5
     source_request_intervals: dict[str, float] = field(default_factory=dict)
+    xiaohongshu_search_cooldown: float = 60
+    xiaohongshu_page_cooldown: float = 60
+    xiaohongshu_detail_cooldown: float = 30
+    xiaohongshu_total_budget: float = 900
     common_crawl_url_limit: int = 200
     common_crawl_warc_limit: int = 50
     guba_session_file: Path = Path("var/auth/guba.session.json")
@@ -635,6 +639,18 @@ class Settings:
                 for name, default in DEFAULT_SOURCE_INTERVALS.items()
                 if os.getenv(f"RETAIL_TIDE_{name.upper().replace('-', '_')}_MIN_INTERVAL")
             },
+            xiaohongshu_search_cooldown=max(
+                0, float(os.getenv("RETAIL_TIDE_XIAOHONGSHU_SEARCH_COOLDOWN", "60"))
+            ),
+            xiaohongshu_page_cooldown=max(
+                0, float(os.getenv("RETAIL_TIDE_XIAOHONGSHU_PAGE_COOLDOWN", "60"))
+            ),
+            xiaohongshu_detail_cooldown=max(
+                0, float(os.getenv("RETAIL_TIDE_XIAOHONGSHU_DETAIL_COOLDOWN", "30"))
+            ),
+            xiaohongshu_total_budget=max(
+                1, float(os.getenv("RETAIL_TIDE_XIAOHONGSHU_TOTAL_BUDGET", "900"))
+            ),
             common_crawl_url_limit=max(
                 1, int(os.getenv("RETAIL_TIDE_COMMON_CRAWL_URL_LIMIT", "200"))
             ),

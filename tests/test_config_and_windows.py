@@ -64,7 +64,7 @@ def test_scheduled_refresh_runs_previous_day_with_market_sync(monkeypatch, tmp_p
     assert captured["until"] == end.isoformat()
     assert captured["limit"] == 123
     assert captured["name"] is None
-    assert captured["exclude_source"] == ["wikimedia-pageviews"]
+    assert captured["exclude_source"] == ["wikimedia-pageviews", "xiaohongshu"]
     assert captured["sync_market_data"] is True
 
 
@@ -113,8 +113,15 @@ def test_rebuild_derived_runs_pipeline_market_and_return_recalculation(monkeypat
     monkeypatch.setattr(
         cli_module,
         "run_core_pipeline",
-        lambda actual_session, *, limit, settings: (
-            captured.update({"session": actual_session, "limit": limit, "settings": settings})
+        lambda actual_session, *, limit, settings, **kwargs: (
+            captured.update(
+                {
+                    "session": actual_session,
+                    "limit": limit,
+                    "settings": settings,
+                    **kwargs,
+                }
+            )
             or {"analyzed": 7}
         ),
     )
@@ -135,6 +142,7 @@ def test_rebuild_derived_runs_pipeline_market_and_return_recalculation(monkeypat
     assert captured["session"] is session
     assert captured["limit"] == 123
     assert captured["settings"] is settings
+    assert captured["resolve_all"] is True
     assert captured["output"]["pipeline"]["analyzed"] == 7
     assert captured["output"]["pipeline"]["returns_after_market_sync"] == {"evaluated": 3}
     assert session.closed

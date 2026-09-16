@@ -29,6 +29,15 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         return yaml.safe_load(handle) or {}
 
 
+def topic_reference_order(config_dir: str | Path = "config") -> dict[str, list[str]]:
+    """Explicit display/research order; a second reference never doubles event samples."""
+    return {
+        item["slug"]: [str(symbol) for symbol in item["reference_assets"]]
+        for item in _load_yaml(Path(config_dir) / "topics.yaml").get("topics", [])
+        if "reference_assets" in item
+    }
+
+
 def sync_registry(
     session: Session,
     config_dir: str | Path = "config",
@@ -46,6 +55,7 @@ def sync_registry(
         "sources": 0,
         "links": 0,
         "links_removed": 0,
+        "aliases_removed": 0,
     }
     now = now_utc()
 
@@ -84,6 +94,10 @@ def sync_registry(
             topic.name = item["name"]
             topic.status = item.get("status", topic.status)
         topic_by_slug[topic.slug] = topic
+        for alias in list(topic.aliases):
+            if alias.alias in item.get("retired_aliases", []):
+                topic.aliases.remove(alias)
+                created["aliases_removed"] += 1
         existing_aliases = {a.alias.casefold() for a in topic.aliases}
         for alias in item.get("aliases", []):
             if str(alias).casefold() not in existing_aliases:
@@ -112,6 +126,10 @@ def sync_registry(
         else:
             asset.name = item["name"]
         asset_by_symbol[asset.symbol] = asset
+        for alias in list(asset.aliases):
+            if alias.alias in item.get("retired_aliases", []):
+                asset.aliases.remove(alias)
+                created["aliases_removed"] += 1
         existing_aliases = {a.alias.casefold() for a in asset.aliases}
         for alias in item.get("aliases", []):
             if isinstance(alias, str):
@@ -148,6 +166,12 @@ def sync_registry(
     for item in assets:
         for slug in item.get("topics", []):
             topic_links.setdefault(str(slug), []).append(str(item["symbol"]))
+    for slug, symbols in topic_reference_order(config_dir).items():
+        if len(symbols) != len(set(symbols)):
+            raise ValueError(f"duplicate reference asset for {slug}")
+        for symbol in symbols:
+            if symbol not in topic_links.get(slug, []):
+                raise ValueError(f"reference asset {symbol} is not linked to topic {slug}")
     desired_links: set[tuple[int, int]] = set()
     for slug, symbols in topic_links.items():
         topic = topic_by_slug.get(slug)

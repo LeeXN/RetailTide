@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
 from ..models import (
+    Asset,
+    AssetTopic,
     EventMetricLink,
     EventReturn,
     MetricSignal,
@@ -14,6 +16,7 @@ from ..models import (
     SignalEvent,
     Topic,
 )
+from ..registry import topic_reference_order
 from ..time import now_utc
 from .stats import spearman, summarize
 
@@ -25,6 +28,15 @@ def _topic(session: Session, slug: str) -> Topic:
     if topic is None:
         raise ValueError(f"unknown topic: {slug}")
     return topic
+
+
+def _reference_asset_id(session: Session, topic: Topic, settings: Settings) -> int | None:
+    order = topic_reference_order(settings.config_dir).get(topic.slug, [])
+    if order:
+        return session.scalar(select(Asset.id).where(Asset.symbol == order[0]))
+    return session.scalar(
+        select(AssetTopic.asset_id).where(AssetTopic.topic_id == topic.id).order_by(AssetTopic.id)
+    )
 
 
 def _persist_run(
@@ -100,6 +112,7 @@ def event_study(
 ) -> dict:
     settings = settings or get_settings()
     topic = _topic(session, topic_slug)
+    reference_id = _reference_asset_id(session, topic, settings)
     events = session.scalars(
         select(SignalEvent).where(
             SignalEvent.topic_id == topic.id,
@@ -125,7 +138,9 @@ def event_study(
         rows = (
             session.scalars(
                 select(EventReturn).where(
-                    EventReturn.event_id.in_(event_ids), EventReturn.horizon == horizon
+                    EventReturn.event_id.in_(event_ids),
+                    EventReturn.horizon == horizon,
+                    EventReturn.asset_id == reference_id,
                 )
             ).all()
             if event_ids
@@ -172,6 +187,7 @@ def event_study(
     result = {
         "study": "event-study",
         "topic": topic.slug,
+        "reference_asset_id": reference_id,
         "event": event_type,
         "observation_period": period,
         "events": len(events),
@@ -227,6 +243,7 @@ def quantile_study(
     if horizon not in HORIZONS:
         raise ValueError(f"unsupported horizon: {horizon}")
     topic = _topic(session, topic_slug)
+    reference_id = _reference_asset_id(session, topic, settings)
     rows = []
     linked_event_ids: set[int] = set()
     entry_event_ids: set[int] = set()
@@ -246,6 +263,7 @@ def quantile_study(
             and_(
                 EventReturn.event_id == SignalEvent.id,
                 EventReturn.horizon == horizon,
+                EventReturn.asset_id == reference_id,
             ),
         )
         .where(

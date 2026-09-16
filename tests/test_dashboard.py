@@ -622,7 +622,7 @@ def test_topic_overview_compares_all_topics_in_latest_bucket(session):
             created_at=datetime(2026, 8, 14, 8, tzinfo=UTC),
         )
     )
-    ai_asset = session.scalar(select(Asset).where(Asset.symbol == "159869"))
+    ai_asset = session.scalar(select(Asset).where(Asset.symbol == "159819"))
     session.add(
         MarketBar(
             asset_id=ai_asset.id,
@@ -668,7 +668,7 @@ def test_topic_overview_compares_all_topics_in_latest_bucket(session):
     selected_ai = next(row for row in selected_result["topics"] if row["slug"] == "ai")
     ranged_ai = next(row for row in ranged_result["topics"] if row["slug"] == "ai")
 
-    assert len(result["topics"]) == 10
+    assert len(result["topics"]) == 20
     assert result["bucket_at"] == datetime(2026, 8, 13, 16, tzinfo=UTC)
     assert result["comparison_mode"] == "calendar_day_asia_shanghai"
     assert selected_result["selected_date"] == "2026-08-13"
@@ -723,8 +723,8 @@ def test_topic_overview_compares_all_topics_in_latest_bucket(session):
     assert ai["history"][-1]["baseline_sample_days"] == 0
     assert ai["trend_windows"]["today"]["retail_count"] == 1
     assert ai["trend_summary"]["direction"] == "insufficient"
-    assert ai["asset"]["symbol"] == "159869"
-    assert ai["assets"][0]["symbol"] == "159869"
+    assert ai["asset"]["symbol"] == "159819"
+    assert [row["symbol"] for row in ai["assets"]] == ["159819", "515070"]
     assert ai["asset"]["price_history"][0]["close"] == 1.05
     assert result["market"]["attention"] == 2
     assert result["market"]["retail_count"] == 1

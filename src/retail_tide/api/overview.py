@@ -149,15 +149,11 @@ def _daily_heat_index(row: dict[str, Any]) -> float | None:
     )
     emotion_activation = min(
         1.0,
-        (int(row.get("fomo_count") or 0) + int(row.get("panic_count") or 0))
-        / retail_denominator,
+        (int(row.get("fomo_count") or 0) + int(row.get("panic_count") or 0)) / retail_denominator,
     )
     directional_conviction = min(
         1.0,
-        abs(
-            int(row.get("buy_intent_count") or 0)
-            - int(row.get("sell_intent_count") or 0)
-        )
+        abs(int(row.get("buy_intent_count") or 0) - int(row.get("sell_intent_count") or 0))
         / retail_denominator,
     )
     components = {
@@ -167,9 +163,7 @@ def _daily_heat_index(row: dict[str, Any]) -> float | None:
         "emotion_activation": emotion_activation,
         "directional_conviction": directional_conviction,
     }
-    score = 100 * sum(
-        components[name] * weight for name, weight in _DAILY_HEAT_WEIGHTS.items()
-    )
+    score = 100 * sum(components[name] * weight for name, weight in _DAILY_HEAT_WEIGHTS.items())
     return round(max(0.0, min(100.0, score)), 1)
 
 
@@ -724,8 +718,9 @@ def _topic_asset_payloads(
     *,
     start_at: Any,
     end_at: Any,
+    config_dir="config",
 ) -> dict[int, list[dict[str, Any]]]:
-    if not topic_ids or start_at is None or end_at is None:
+    if not topic_ids:
         return {}
     links = session.execute(
         select(AssetTopic.topic_id, Asset)
@@ -738,7 +733,7 @@ def _topic_asset_payloads(
         assets_by_topic[topic_id].append(asset)
     asset_ids = {asset.id for topic_assets in assets_by_topic.values() for asset in topic_assets}
     bars_by_asset: dict[int, dict[Any, MarketBar]] = defaultdict(dict)
-    if asset_ids:
+    if asset_ids and start_at is not None and end_at is not None:
         bars = session.scalars(
             select(MarketBar)
             .where(
@@ -752,7 +747,15 @@ def _topic_asset_payloads(
         for bar in bars:
             bars_by_asset[bar.asset_id][bar.ts] = bar
     result: dict[int, list[dict[str, Any]]] = {}
+    from ..registry import topic_reference_order
+
+    orders = topic_reference_order(config_dir)
+    slugs = dict(session.execute(select(Topic.id, Topic.slug).where(Topic.id.in_(topic_ids))).all())
     for topic_id, topic_assets in assets_by_topic.items():
+        order = orders.get(slugs[topic_id], [])
+        topic_assets.sort(
+            key=lambda asset: order.index(asset.symbol) if asset.symbol in order else len(order)
+        )
         payloads = []
         for asset in topic_assets:
             price_history = [
@@ -772,6 +775,7 @@ def _topic_asset_payloads(
                     "symbol": asset.symbol,
                     "name": asset.name,
                     "asset_type": asset.asset_type,
+                    "is_primary": asset == topic_assets[0],
                     "market": asset.market,
                     "currency": asset.currency,
                     "price_history": price_history,
@@ -811,9 +815,7 @@ def _wikimedia_histories(
         )
         .order_by(TrendObservation.observed_at, TrendObservation.id, TrendSignal.id)
     ).all()
-    latest: dict[
-        tuple[int, str, date], tuple[TrendObservation, TrendSignal]
-    ] = {}
+    latest: dict[tuple[int, str, date], tuple[TrendObservation, TrendSignal]] = {}
     for observation, signal in rows:
         observed_at = as_utc(observation.observed_at)
         if observed_at is None or observation.topic_id is None:
@@ -854,9 +856,7 @@ def _wikimedia_histories(
         topic_histories[topic_id].append(
             {
                 "bucket_at": payloads[0]["bucket_at"],
-                "keyword": " / ".join(
-                    sorted(str(payload["keyword"]) for payload in payloads)
-                ),
+                "keyword": " / ".join(sorted(str(payload["keyword"]) for payload in payloads)),
                 "keywords": [
                     {
                         "keyword": payload["keyword"],
@@ -888,9 +888,7 @@ def _wikimedia_histories(
         ]
         market_history.append(
             {
-                "bucket_at": as_utc(
-                    datetime.combine(day, time.min, tzinfo=UTC)
-                ),
+                "bucket_at": as_utc(datetime.combine(day, time.min, tzinfo=UTC)),
                 "keyword": "全部赛道",
                 "value": total_value,
                 "change_ratio": (
@@ -938,32 +936,38 @@ def _daily_data_coverage(
         source = source_by_id.get(content.source_id)
         content_counts[source.name if source else "unknown"] += 1
 
-    indexed_content_ids = set(
-        session.scalars(
-            select(ContentEntity.content_id)
-            .where(
-                ContentEntity.entity_type == "topic",
-                ContentEntity.entity_id.in_(topic_ids),
-                ContentEntity.content_id.in_(content_ids),
-            )
-            .distinct()
-        ).all()
-    ) if topic_ids and content_ids else set()
-    analyzed_content_ids = set(
-        session.scalars(
-            select(ContentAnalysis.content_id)
-            .where(ContentAnalysis.content_id.in_(indexed_content_ids))
-            .distinct()
-        ).all()
-    ) if indexed_content_ids else set()
+    indexed_content_ids = (
+        set(
+            session.scalars(
+                select(ContentEntity.content_id)
+                .where(
+                    ContentEntity.entity_type == "topic",
+                    ContentEntity.entity_id.in_(topic_ids),
+                    ContentEntity.content_id.in_(content_ids),
+                )
+                .distinct()
+            ).all()
+        )
+        if topic_ids and content_ids
+        else set()
+    )
+    analyzed_content_ids = (
+        set(
+            session.scalars(
+                select(ContentAnalysis.content_id)
+                .where(ContentAnalysis.content_id.in_(indexed_content_ids))
+                .distinct()
+            ).all()
+        )
+        if indexed_content_ids
+        else set()
+    )
 
     normalized_expected = tuple(
         dict.fromkeys(name.lower().replace("_", "-") for name in expected_sources)
     )
     expected_source_ids = {
-        source.name: source.id
-        for source in source_rows
-        if source.name in normalized_expected
+        source.name: source.id for source in source_rows if source.name in normalized_expected
     }
     # Load every task that overlaps the selected natural day.  A task may be
     # successful for a shorter, frozen window (for example 00:00-12:00) while
@@ -1034,9 +1038,7 @@ def _daily_data_coverage(
                     topic_states.append("not_recorded")
                 for task in candidates:
                     retry_at = as_utc(task.next_retry_at)
-                    if retry_at is not None and (
-                        next_retry_at is None or retry_at > next_retry_at
-                    ):
+                    if retry_at is not None and (next_retry_at is None or retry_at > next_retry_at):
                         next_retry_at = retry_at
         elif expected:
             topic_states = ["not_recorded"] * len(topic_ids)
@@ -1074,25 +1076,31 @@ def _daily_data_coverage(
             }
         )
 
-    linked_asset_ids = set(
-        session.scalars(
-            select(AssetTopic.asset_id)
-            .where(AssetTopic.topic_id.in_(topic_ids))
-            .distinct()
-        ).all()
-    ) if topic_ids else set()
-    exact_bar_asset_ids = set(
-        session.scalars(
-            select(MarketBar.asset_id)
-            .where(
-                MarketBar.asset_id.in_(linked_asset_ids),
-                MarketBar.interval == "1d",
-                MarketBar.ts >= start_at,
-                MarketBar.ts < end_at,
-            )
-            .distinct()
-        ).all()
-    ) if linked_asset_ids else set()
+    linked_asset_ids = (
+        set(
+            session.scalars(
+                select(AssetTopic.asset_id).where(AssetTopic.topic_id.in_(topic_ids)).distinct()
+            ).all()
+        )
+        if topic_ids
+        else set()
+    )
+    exact_bar_asset_ids = (
+        set(
+            session.scalars(
+                select(MarketBar.asset_id)
+                .where(
+                    MarketBar.asset_id.in_(linked_asset_ids),
+                    MarketBar.interval == "1d",
+                    MarketBar.ts >= start_at,
+                    MarketBar.ts < end_at,
+                )
+                .distinct()
+            ).all()
+        )
+        if linked_asset_ids
+        else set()
+    )
 
     expected_rows = [row for row in source_coverage if row["expected"]]
     collection_status = (
@@ -1106,11 +1114,7 @@ def _daily_data_coverage(
     is_collecting = selected_date == today
     analysis_pending = max(0, len(indexed_content_ids) - len(analyzed_content_ids))
     analysis_complete = bool(indexed_content_ids) and analysis_pending == 0
-    is_complete = (
-        not is_collecting
-        and collection_status == "complete"
-        and analysis_complete
-    )
+    is_complete = not is_collecting and collection_status == "complete" and analysis_complete
     return {
         "selected_date": selected_date.isoformat(),
         "window_start": start_at,
@@ -1120,11 +1124,7 @@ def _daily_data_coverage(
         "is_complete": is_complete,
         "analysis_complete": analysis_complete,
         "analysis_status": (
-            "complete"
-            if analysis_complete
-            else "pending"
-            if indexed_content_ids
-            else "empty"
+            "complete" if analysis_complete else "pending" if indexed_content_ids else "empty"
         ),
         "collection_status": collection_status,
         "content_count": len(content_ids),
@@ -1147,6 +1147,7 @@ def topic_overview(
     selected_date: date | None = None,
     history_start_date: date | None = None,
     expected_sources: tuple[str, ...] = ("guba", "taoguba"),
+    config_dir="config",
 ) -> dict[str, Any]:
     """Build a deduplicated row for every active topic on a selected day."""
 
@@ -1331,6 +1332,7 @@ def topic_overview(
         topic_ids,
         start_at=display_start,
         end_at=bucket_at + delta if bucket_at is not None else None,
+        config_dir=config_dir,
     )
     for topic in topics:
         summary = _with_trend(
@@ -1344,8 +1346,7 @@ def topic_overview(
                 (
                     bar
                     for bar in reversed(asset["price_history"])
-                    if bucket_at is not None
-                    and bucket_at <= bar["ts"] < bucket_at + delta
+                    if bucket_at is not None and bucket_at <= bar["ts"] < bucket_at + delta
                 ),
                 None,
             )
@@ -1393,9 +1394,7 @@ def topic_overview(
         ),
         "generated_at": now_utc(),
         "data_cutoff_at": as_utc(latest_at),
-        "comparison_mode": (
-            "calendar_day_asia_shanghai" if bucket_size == "1d" else "rolling_1h"
-        ),
+        "comparison_mode": ("calendar_day_asia_shanghai" if bucket_size == "1d" else "rolling_1h"),
         "market": {
             **_history_metadata(
                 market_history,
@@ -1502,9 +1501,7 @@ def topic_contents(
     def apply_scope(statement: Any) -> Any:
         statement = statement.select_from(Content)
         if topic_id is not None:
-            statement = statement.join(
-                ContentEntity, ContentEntity.content_id == Content.id
-            ).where(
+            statement = statement.join(ContentEntity, ContentEntity.content_id == Content.id).where(
                 ContentEntity.entity_type == "topic",
                 ContentEntity.entity_id == topic_id,
             )
@@ -1543,9 +1540,7 @@ def topic_contents(
     ]
     facet_row = session.execute(
         apply_selected_source(
-            apply_scope(select(*facet_columns)).outerjoin(
-                preferred, preferred.id == preferred_id
-            )
+            apply_scope(select(*facet_columns)).outerjoin(preferred, preferred.id == preferred_id)
         )
     ).one()
     facets = {name: int(getattr(facet_row, name) or 0) for name in CONTENT_FILTERS}
@@ -1575,9 +1570,7 @@ def topic_contents(
         if analysis_ids
         else {}
     )
-    sources = {
-        source.id: source.name for source in session.scalars(select(Source)).all()
-    }
+    sources = {source.id: source.name for source in session.scalars(select(Source)).all()}
 
     items = []
     for content, analysis in item_rows:
@@ -1725,9 +1718,9 @@ def topic_series(
     grouped: dict[Any, dict[str, Any]] = defaultdict(_empty_period)
     for content in contents:
         bucket_at = floor_bucket(content.published_at, bucket_size)
-        analysis = scoped_analyses.get(
-            (content.content_id, topic_id)
-        ) or legacy_analyses.get(content.content_id)
+        analysis = scoped_analyses.get((content.content_id, topic_id)) or legacy_analyses.get(
+            content.content_id
+        )
         _add_content(grouped[bucket_at], content, analysis)
     rows = [
         {

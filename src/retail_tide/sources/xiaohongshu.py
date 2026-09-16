@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import random
 import re
+import time
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from time import monotonic
 from typing import Any
 from urllib.parse import quote
@@ -22,6 +26,9 @@ from .base import (
     raw_from_mapping,
 )
 from .fixture import FixtureSource
+from .xhs_control import XhsBlocked, XhsControl
+
+logger = logging.getLogger(__name__)
 
 XIAOHONGSHU_WEB_URL = "https://www.xiaohongshu.com"
 GENERIC_QUERY_TERMS = frozenset(
@@ -147,8 +154,24 @@ def _response_data(payload: Any, *, operation: str) -> Any:
     if not isinstance(payload, dict):
         raise SourceError(f"xiaohongshu {operation} response has an unexpected shape")
     if payload.get("success") is False or payload.get("error"):
-        code = html_to_text(payload.get("code")) or "unknown"
+        code = html_to_text(payload.get("error_code") or payload.get("code")) or "unknown"
         message = html_to_text(payload.get("message") or payload.get("error")) or "unknown error"
+        if operation == "detail" and any(
+            marker in message.casefold() for marker in ("笔记不存在", "已删除", "note not found")
+        ):
+            raise CandidateUnavailable("xiaohongshu candidate is unavailable")
+        if code in {"auth_required", "rate_limited", "verification_required", "upstream_rejected"}:
+            try:
+                retry_after = float(payload.get("retry_after_seconds") or 0)
+            except (TypeError, ValueError):
+                retry_after = None
+            raise SourceRequestError(
+                f"xiaohongshu {operation} failed ({code})",
+                error_code=code,
+                retryable=code == "rate_limited",
+                retry_after_seconds=retry_after,
+                transport_name="upstream",
+            )
         raise SourceError(f"xiaohongshu {operation} failed ({code}): {message}")
     return payload.get("data", payload)
 
@@ -239,9 +262,7 @@ def _mapping_from_detail(
     return {key: value for key, value in mapping.items() if value is not None}
 
 
-def _evenly_sample_candidates(
-    candidates: list[dict[str, Any]], limit: int
-) -> list[dict[str, Any]]:
+def _evenly_sample_candidates(candidates: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     """Select stable positions across a ranked page instead of only its head."""
 
     if len(candidates) <= limit:
@@ -362,8 +383,12 @@ class XiaohongshuSource(FixtureSource):
         known_source_published_at: dict[str, datetime] | None = None,
         min_request_interval: float | None = None,
         request_timeout: float = 50,
-        total_budget: float = 300,
+        total_budget: float = 900,
         request_jitter: float | None = None,
+        search_cooldown: float = 60,
+        page_cooldown: float = 60,
+        detail_cooldown: float = 30,
+        control: XhsControl | None = None,
         **kwargs: Any,
     ):
         super().__init__("xiaohongshu", **kwargs)
@@ -398,6 +423,15 @@ class XiaohongshuSource(FixtureSource):
         )
         self.request_timeout = max(1.0, request_timeout)
         self.total_budget = max(self.request_timeout, total_budget)
+        self.operation_cooldowns = {
+            "search": max(0, search_cooldown),
+            "page": max(0, page_cooldown),
+            "detail": max(0, detail_cooldown),
+            "login": 0,
+        }
+        self.control = control or (
+            XhsControl() if transport is None and spider_transport is None else None
+        )
 
     async def _pace(self) -> float:
         interval = self.min_request_interval + (
@@ -407,6 +441,106 @@ class XiaohongshuSource(FixtureSource):
         return interval
 
     async def _request(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+        endpoint: str | None = None,
+        transport_name: str = "MCP",
+    ) -> Any:
+        if self.control is None:
+            return await self._request_http(
+                client,
+                method,
+                path,
+                json_body=json_body,
+                endpoint=endpoint,
+                transport_name=transport_name,
+            )
+        operation = (
+            "detail"
+            if path.endswith("/detail")
+            else (
+                "login"
+                if path.endswith("/login/status")
+                else ("page" if (json_body or {}).get("cursor") else "search")
+            )
+        )
+        async with self.control.ownership():
+            state = self.control.check()
+            wait = max(0, state.get("next_request_at", 0) - time.time())
+            if wait:
+                await asyncio.sleep(wait)
+            self.control.check()
+            interval = max(self.min_request_interval, self.operation_cooldowns[operation])
+            interval += random.uniform(0, self.request_jitter) if self.request_jitter else 0
+            started = monotonic()
+            success = False
+            error_code = None
+            try:
+                payload = await self._request_http(
+                    client,
+                    method,
+                    path,
+                    json_body=json_body,
+                    endpoint=endpoint,
+                    transport_name=transport_name,
+                )
+                _response_data(payload, operation=operation)
+                if operation == "detail":
+                    _detail_note(payload)
+                elif operation in {"search", "page"}:
+                    _feed_candidates(payload, operation=operation)
+                if operation == "login":
+                    data = _response_data(payload, operation=operation)
+                    if isinstance(data, dict) and isinstance(data.get("data"), dict):
+                        data = data["data"]
+                    if (
+                        not isinstance(data, dict)
+                        or data.get("is_logged_in", data.get("isLoggedIn")) is not True
+                    ):
+                        raise SourceRequestError(
+                            "xiaohongshu MCP login is unavailable; user login is required",
+                            error_code="auth_required",
+                            retryable=False,
+                            transport_name=transport_name,
+                        )
+                success = operation != "login"
+                return payload
+            except CandidateUnavailable:
+                raise
+            except SourceError as exc:
+                error_code = getattr(exc, "error_code", None) or "response_invalid"
+                message = str(exc).casefold()
+                if any(
+                    marker in message
+                    for marker in ("验证码", "captcha", "身份验证", "安全验证", "风控")
+                ):
+                    error_code = "verification_required"
+                elif any(
+                    marker in message for marker in ("登录", "login required", "auth_required")
+                ):
+                    error_code = "auth_required"
+                elif any(marker in message for marker in ("频繁", "rate limit", "rate_limited")):
+                    error_code = "rate_limited"
+                self.control.failure(error_code, getattr(exc, "retry_after_seconds", None))
+                raise
+            finally:
+                self.control.completed(interval, success=success)
+                logger.info(
+                    "event=xiaohongshu_operation transport=%s operation=%s wait_seconds=%.3f "
+                    "elapsed_seconds=%.3f cooldown_seconds=%.3f error_code=%s",
+                    transport_name,
+                    operation,
+                    wait,
+                    monotonic() - started,
+                    interval,
+                    error_code,
+                )
+
+    async def _request_http(
         self,
         client: httpx.AsyncClient,
         method: str,
@@ -431,6 +565,8 @@ class XiaohongshuSource(FixtureSource):
                 payload = exc.response.json()
             except ValueError:
                 payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
             message = html_to_text(
                 payload.get("message") or payload.get("error") or payload.get("detail")
                 if isinstance(payload, dict)
@@ -441,26 +577,33 @@ class XiaohongshuSource(FixtureSource):
                 message = f"{message}: {details}" if message else details
             error_code = str(payload.get("error_code") or "").strip()
             retryable_value = payload.get("retryable")
-            retry_after_value = payload.get("retry_after_seconds")
+            retry_after_value = payload.get("retry_after_seconds") or exc.response.headers.get(
+                "Retry-After"
+            )
             try:
                 retry_after = (
                     float(retry_after_value) if retry_after_value not in (None, "") else None
                 )
             except (TypeError, ValueError):
-                retry_after = None
+                try:
+                    retry_after = max(
+                        0, parsedate_to_datetime(str(retry_after_value)).timestamp() - time.time()
+                    )
+                except (TypeError, ValueError, OverflowError):
+                    retry_after = None
             unavailable_markers = ("笔记不存在", "已删除", "note not found", "not exist")
             if code in {404, 410} or any(
                 marker in message.casefold() for marker in unavailable_markers
             ):
                 raise CandidateUnavailable("xiaohongshu candidate is unavailable") from exc
-            if not error_code:
-                if code == 401:
-                    error_code = "auth_required"
-                elif code == 403:
-                    error_code = "upstream_rejected"
-                elif code == 429:
-                    error_code = "rate_limited"
-                elif code == 504:
+            if code == 401:
+                error_code = "auth_required"
+            elif code == 403:
+                error_code = "upstream_rejected"
+            elif code == 429:
+                error_code = "rate_limited"
+            elif not error_code:
+                if code == 504:
                     error_code = "upstream_timeout"
                 else:
                     error_code = "transport_error"
@@ -476,7 +619,14 @@ class XiaohongshuSource(FixtureSource):
                 retry_after_seconds=retry_after,
                 transport_name=transport_name,
             ) from exc
-        except (httpx.TransportError, ValueError, TypeError) as exc:
+        except (ValueError, TypeError) as exc:
+            raise SourceRequestError(
+                "xiaohongshu response is not valid JSON",
+                error_code="response_invalid",
+                retryable=False,
+                transport_name=transport_name,
+            ) from exc
+        except httpx.TransportError as exc:
             raise SourceRequestError(
                 f"xiaohongshu {transport_name} request failed: {exc}",
                 error_code="transport_error",
@@ -498,55 +648,34 @@ class XiaohongshuSource(FixtureSource):
     ) -> CollectResult:
         if self.use_fixture:
             return await super().collect(query, since, cursor, until=until)
+        if self.control is not None:
+            self.control.check()
+            if self.endpoint:
+                await self._require_mcp_login()
         if not self.spider_endpoint:
             return await self._collect_mcp(query, since, cursor, until=until)
-        if self.endpoint and self.transport is None:
-            await self._require_mcp_login()
         try:
             return await self._collect_spider(query, since, cursor, until=until)
         except SourceError as exc:
-            sort_by, backend_cursor, _ = _strategy_cursor_state(cursor)
+            _sort_by, backend_cursor, _ = _strategy_cursor_state(cursor)
             current = as_utc(self.clock()) or now_utc()
             effective_until = as_utc(until) or current
             normalized_since = as_utc(since) or since
-            recent_single_day = (
-                current - normalized_since <= timedelta(days=7)
-                and effective_until - normalized_since <= timedelta(days=1)
-            )
-            spider_auth_unavailable = (
+            recent_single_day = current - normalized_since <= timedelta(
+                days=7
+            ) and effective_until - normalized_since <= timedelta(days=1)
+            network_failure = (
                 isinstance(exc, SourceRequestError)
-                and exc.error_code == "auth_required"
-                and not exc.retryable
+                and exc.error_code in {"transport_error", "upstream_timeout"}
+                and exc.retryable
             )
-            blocked_without_fallback = (
-                isinstance(exc, SourceRequestError)
-                and exc.error_code in {"rate_limited", "upstream_rejected"}
-                and not exc.retryable
-            )
-            if not self.endpoint or blocked_without_fallback:
+            if not self.endpoint or not network_failure:
                 raise
-            if spider_auth_unavailable:
-                if not recent_single_day:
-                    raise
-                # The MCP service is the account-login authority. Its session
-                # may be healthy while the optional Spider bridge still has an
-                # expired read-only mount. For a recent daily sample, restart
-                # from MCP's bounded first page instead of touching or copying
-                # either service's session material.
-                fallback_cursor = xiaohongshu_strategy_cursor(sort_by)
-                fallback_reason = "spider_auth_required"
-                fallback_warning = (
-                    f"spider session unavailable ({exc}); used logged-in MCP "
-                    "first-page fallback"
-                )
-            else:
-                if backend_cursor or not recent_single_day:
-                    raise
-                fallback_cursor = cursor
-                fallback_reason = "spider_pagination_unavailable"
-                fallback_warning = (
-                    f"spider pagination unavailable ({exc}); used MCP first-page fallback"
-                )
+            if backend_cursor or not recent_single_day:
+                raise
+            fallback_cursor = cursor
+            fallback_reason = "spider_pagination_unavailable"
+            fallback_warning = "spider network failure; used MCP first-page fallback"
             fallback = await self._collect_mcp(
                 query,
                 since,
@@ -564,9 +693,7 @@ class XiaohongshuSource(FixtureSource):
                         "search_transport": "mcp",
                         "fallback_searches": 1,
                         "fallback_reason": fallback_reason,
-                        "discarded_spider_cursor": bool(
-                            spider_auth_unavailable and backend_cursor
-                        ),
+                        "discarded_spider_cursor": False,
                         "historical_pagination_complete": False,
                     },
                 }
@@ -583,9 +710,7 @@ class XiaohongshuSource(FixtureSource):
                 follow_redirects=True,
                 headers=headers,
             ) as client:
-                response = await client.get(f"{self.endpoint}/api/v1/login/status")
-                response.raise_for_status()
-                payload = response.json()
+                payload = await self._request(client, "GET", "/api/v1/login/status")
         except (httpx.HTTPError, ValueError, TypeError) as exc:
             raise SourceRequestError(
                 f"xiaohongshu MCP login status check failed: {exc}",
@@ -599,7 +724,9 @@ class XiaohongshuSource(FixtureSource):
         logged_in = (
             data.get("is_logged_in")
             if isinstance(data, dict) and "is_logged_in" in data
-            else data.get("isLoggedIn") if isinstance(data, dict) else None
+            else data.get("isLoggedIn")
+            if isinstance(data, dict)
+            else None
         )
         if logged_in is not True:
             raise SourceRequestError(
@@ -659,11 +786,7 @@ class XiaohongshuSource(FixtureSource):
             for candidate in candidates:
                 note_id = str(candidate.get("id") or "").strip()
                 token = str(candidate.get("xsecToken") or "").strip()
-                if (
-                    not note_id
-                    or not token
-                    or note_id in seen_ids
-                ):
+                if not note_id or not token or note_id in seen_ids:
                     continue
                 seen_ids.add(note_id)
                 if note_id in self.known_source_item_ids:
@@ -741,13 +864,23 @@ class XiaohongshuSource(FixtureSource):
                 except CandidateUnavailable:
                     candidate_unavailable += 1
                 except SourceRequestError as exc:
+                    if self.control is not None:
+                        record_detail_error(f"spider:{exc.error_code}")
+                        detail_errors += 1
+                        break
                     if exc.error_code in {"auth_required", "rate_limited"} or not exc.retryable:
+                        raise
+                    if exc.error_code not in {"transport_error", "upstream_timeout"}:
                         raise
                     record_detail_error(f"spider:{exc.error_code}")
                     backup_candidates.append(candidate)
+                except XhsBlocked:
+                    detail_errors += 1
+                    break
                 except SourceError:
                     record_detail_error("spider:source_error")
-                    backup_candidates.append(candidate)
+                    detail_errors += 1
+                    break
 
             # Capability-aware backup: finish the primary batch first, then let
             # MCP compensate each transport-local detail failure at most once.
@@ -774,9 +907,7 @@ class XiaohongshuSource(FixtureSource):
                                 json_body={
                                     "feed_id": str(candidate["id"]),
                                     "xsec_token": str(candidate["xsecToken"]),
-                                    "xsec_source": str(
-                                        candidate.get("xsecSource") or "pc_search"
-                                    ),
+                                    "xsec_source": str(candidate.get("xsecSource") or "pc_search"),
                                     "load_all_comments": False,
                                 },
                             )
@@ -785,7 +916,10 @@ class XiaohongshuSource(FixtureSource):
                         except CandidateUnavailable:
                             candidate_unavailable += 1
                         except SourceRequestError as exc:
-                            if exc.error_code in {"auth_required", "rate_limited"} or not exc.retryable:
+                            if (
+                                exc.error_code in {"auth_required", "rate_limited"}
+                                or not exc.retryable
+                            ):
                                 raise
                             record_detail_error(f"mcp:{exc.error_code}")
                             detail_errors += 1
@@ -917,9 +1051,7 @@ class XiaohongshuSource(FixtureSource):
                     search_errors.append(str(exc))
             if candidates is None:
                 combined = "; ".join(search_errors)
-                raise SourceError(
-                    f"xiaohongshu filtered and unfiltered search failed: {combined}"
-                )
+                raise SourceError(f"xiaohongshu filtered and unfiltered search failed: {combined}")
             if used_unfiltered_search:
                 warnings.append(
                     f"filtered keyword search failed after {len(search_errors)} attempts "
@@ -995,9 +1127,15 @@ class XiaohongshuSource(FixtureSource):
                 except CandidateUnavailable:
                     candidate_unavailable += 1
                 except SourceRequestError as exc:
+                    if self.control is not None:
+                        detail_errors += 1
+                        break
                     if exc.error_code in {"auth_required", "rate_limited"} or not exc.retryable:
                         raise
                     detail_errors += 1
+                except XhsBlocked:
+                    detail_errors += 1
+                    break
                 except SourceError:
                     detail_errors += 1
             if detail_errors:
@@ -1016,7 +1154,9 @@ class XiaohongshuSource(FixtureSource):
                     "candidates": len(candidates),
                     "eligible_candidates": len(eligible),
                     "selected_candidates": len(selected),
-                    "detail_attempts": min(len(selected), detail_successes + detail_errors + candidate_unavailable),
+                    "detail_attempts": min(
+                        len(selected), detail_successes + detail_errors + candidate_unavailable
+                    ),
                     "detail_successes": detail_successes,
                     "detail_failures": detail_errors,
                     "fallback_details": 0,

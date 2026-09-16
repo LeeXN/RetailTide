@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import fcntl
 import hashlib
 import json
@@ -8,6 +9,7 @@ import os
 import re
 import secrets
 import shlex
+import time
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -299,10 +301,7 @@ def _collection_resume_key(
         return None
     current = current or now_utc()
     local_today = current.astimezone(SHANGHAI).date().isoformat()
-    relative_window = (
-        days is not None
-        or single_date == local_today
-    )
+    relative_window = days is not None or single_date == local_today
     payload = {
         "sources": sorted(name.lower().replace("_", "-") for name in source_names),
         "since": since,
@@ -326,8 +325,7 @@ def _backfill_collection_summary(collection: dict) -> dict:
     rows = list(collection.get("jobs") or [])
     return {
         "mode": "bounded-history",
-        "complete": bool(collection.get("completed"))
-        and not collection.get("terminal_jobs"),
+        "complete": bool(collection.get("completed")) and not collection.get("terminal_jobs"),
         "state_file": collection.get("state_file"),
         "job_counts": {
             "total": len(rows),
@@ -437,9 +435,7 @@ def _collect_bounded_until_blocked(
         # Keep rotating while at least one source can make immediate progress.
         # A degraded source must not force healthy sources to stop, while its
         # durable retry timestamp still prevents another request in this run.
-        if not latest.get("attempted_jobs") or not _bounded_collection_has_immediate_work(
-            latest
-        ):
+        if not latest.get("attempted_jobs") or not _bounded_collection_has_immediate_work(latest):
             return latest
 
 
@@ -597,12 +593,15 @@ def _configure_llm_fallback(values: dict[str, str]) -> bool:
     base_url_key = "RETAIL_TIDE_LLM_FALLBACK_BASE_URL"
     api_key_key = "RETAIL_TIDE_LLM_FALLBACK_API_KEY"
     model_key = "RETAIL_TIDE_LLM_FALLBACK_MODEL"
-    has_existing = any(_env_current(values, key) for key in (
-        provider_key,
-        base_url_key,
-        api_key_key,
-        model_key,
-    ))
+    has_existing = any(
+        _env_current(values, key)
+        for key in (
+            provider_key,
+            base_url_key,
+            api_key_key,
+            model_key,
+        )
+    )
     if not typer.confirm("是否配置备用 LLM？", default=has_existing):
         _clear_llm_fallback(values)
         return False
@@ -622,12 +621,8 @@ def _configure_llm_fallback(values: dict[str, str]) -> bool:
         "备用 LLM base URL",
         _env_current(values, base_url_key, default_base_url),
     )
-    values[api_key_key] = _secret_prompt(
-        "备用 LLM API key", _env_current(values, api_key_key)
-    )
-    values[model_key] = _text_prompt(
-        "备用 LLM model", _env_current(values, model_key)
-    )
+    values[api_key_key] = _secret_prompt("备用 LLM API key", _env_current(values, api_key_key))
+    values[model_key] = _text_prompt("备用 LLM model", _env_current(values, model_key))
     return bool(values[base_url_key] and values[api_key_key] and values[model_key])
 
 
@@ -670,15 +665,18 @@ def _configure_llm(values: dict[str, str]) -> bool:
     values[model_key] = _text_prompt("LLM model", existing_model)
     primary_ready = bool(values[base_url_key] and values[api_key_key] and values[model_key])
     fallback_requested = _configure_llm_fallback(values)
-    if any(
-        _env_current(values, key)
-        for key in (
-            "RETAIL_TIDE_LLM_FALLBACK_PROVIDER",
-            "RETAIL_TIDE_LLM_FALLBACK_BASE_URL",
-            "RETAIL_TIDE_LLM_FALLBACK_API_KEY",
-            "RETAIL_TIDE_LLM_FALLBACK_MODEL",
+    if (
+        any(
+            _env_current(values, key)
+            for key in (
+                "RETAIL_TIDE_LLM_FALLBACK_PROVIDER",
+                "RETAIL_TIDE_LLM_FALLBACK_BASE_URL",
+                "RETAIL_TIDE_LLM_FALLBACK_API_KEY",
+                "RETAIL_TIDE_LLM_FALLBACK_MODEL",
+            )
         )
-    ) and not fallback_requested:
+        and not fallback_requested
+    ):
         typer.echo("备用 LLM 配置不完整；主模型仍可使用，retail-tide status 会列出缺项。")
     return primary_ready
 
@@ -836,9 +834,7 @@ def setup(
     typer.echo("东方财富股吧和淘股吧会默认启用；下面只询问可选来源和公共 API 身份。")
 
     values["RETAIL_TIDE_DATA_MODE"] = "live"
-    current_database = _env_current(
-        values, "RETAIL_TIDE_DATABASE_URL", "sqlite:///retail-tide.db"
-    )
+    current_database = _env_current(values, "RETAIL_TIDE_DATABASE_URL", "sqlite:///retail-tide.db")
     values["RETAIL_TIDE_DATABASE_URL"] = current_database
 
     current_secret = _env_current(values, "RETAIL_TIDE_AUTHOR_HMAC_SECRET")
@@ -1107,6 +1103,12 @@ def source_probe(name: str):
         kwargs["session_file"] = settings.source_session_file(normalized_name)
     elif normalized_name == "xiaohongshu":
         kwargs["min_request_interval"] = interval
+        kwargs.update(
+            search_cooldown=settings.xiaohongshu_search_cooldown,
+            page_cooldown=settings.xiaohongshu_page_cooldown,
+            detail_cooldown=settings.xiaohongshu_detail_cooldown,
+            total_budget=settings.xiaohongshu_total_budget,
+        )
     elif normalized_name == "zhihu":
         kwargs["min_public_interval"] = interval
     collector = source_for_name(normalized_name, **kwargs)
@@ -1167,11 +1169,17 @@ def source_import_verified_history(
             settings=settings,
         )
         if normalize:
+            normalized_content_ids: list[int] = []
             result["normalized"] = normalize_pending(
-                session, limit=max(result["candidate_items"] * 2, 1), settings=settings
+                session,
+                limit=max(result["candidate_items"] * 2, 1),
+                settings=settings,
+                normalized_content_ids=normalized_content_ids,
             )
             result["resolved"] = resolve_pending_entities(
-                session, limit=max(result["candidate_items"] * 2, 1)
+                session,
+                limit=max(result["candidate_items"] * 2, 1),
+                content_ids=normalized_content_ids,
             )
         _json(result)
     finally:
@@ -1258,8 +1266,14 @@ def source_collect(
                 resume_key=resume_key,
             )
             if "common-crawl" in normalized_names:
-                normalize_pending(session, limit=50000, settings=settings)
-                resolve_pending_entities(session, limit=50000)
+                normalized_content_ids: list[int] = []
+                normalize_pending(
+                    session,
+                    limit=50000,
+                    settings=settings,
+                    normalized_content_ids=normalized_content_ids,
+                )
+                resolve_pending_entities(session, limit=50000, content_ids=normalized_content_ids)
                 archive_start = start or (now_utc() - timedelta(hours=24))
                 archive_end = end or now_utc()
                 archive = enrich_common_crawl(
@@ -1414,10 +1428,7 @@ def refresh(
 ):
     """Collect a time window, enrich it, deduplicate it and run LLM analysis."""
 
-    if all(
-        value is None
-        for value in (target_date, since, until, date_range, days)
-    ):
+    if all(value is None for value in (target_date, since, until, date_range, days)):
         raise typer.BadParameter("refresh requires --date, --days, or --since")
     settings, _engine, session = _session()
     requested_since = since
@@ -1496,13 +1507,9 @@ def refresh(
             )
 
             topic_slugs = set(topic or [])
-            required_names = [
-                source for source in names if source not in SUPPLEMENT_SOURCES
-            ]
+            required_names = [source for source in names if source not in SUPPLEMENT_SOURCES]
             supplement_names = [
-                source
-                for source in names
-                if source in {"xiaohongshu", "wikimedia-pageviews"}
+                source for source in names if source in {"xiaohongshu", "wikimedia-pageviews"}
             ]
             concurrent_names = [*required_names, *supplement_names]
             resume_key = _collection_resume_key(
@@ -1554,8 +1561,14 @@ def refresh(
                         select(Topic).where(Topic.slug.in_(topic_slugs))
                     ).all()
                     topic_ids = {row.id for row in selected_topics}
-                normalize_pending(session, limit=limit, settings=settings)
-                resolve_pending_entities(session, limit=limit)
+                normalized_content_ids: list[int] = []
+                normalize_pending(
+                    session,
+                    limit=limit,
+                    settings=settings,
+                    normalized_content_ids=normalized_content_ids,
+                )
+                resolve_pending_entities(session, limit=limit, content_ids=normalized_content_ids)
                 archive_result = enrich_common_crawl(
                     session,
                     since=archive_start,
@@ -1619,10 +1632,7 @@ def refresh(
             supplement_warnings = []
             if required_blockers:
                 incomplete_required_sources = sorted(
-                    {
-                        str(row.get("source") or "unknown")
-                        for row in required_blockers
-                    }
+                    {str(row.get("source") or "unknown") for row in required_blockers}
                 )
                 supplement_warnings.append(
                     "required source collection was incomplete: "
@@ -1630,14 +1640,10 @@ def refresh(
                 )
             if required_summary.get("terminal"):
                 terminal_sources = sorted(
-                    {
-                        str(row.get("source") or "unknown")
-                        for row in required_summary["terminal"]
-                    }
+                    {str(row.get("source") or "unknown") for row in required_summary["terminal"]}
                 )
                 supplement_warnings.append(
-                    "required source retry limit reached: "
-                    + ", ".join(terminal_sources)
+                    "required source retry limit reached: " + ", ".join(terminal_sources)
                 )
             if not supplement_summary.get("complete", True):
                 incomplete_supplements = sorted(
@@ -1648,8 +1654,7 @@ def refresh(
                     }
                 )
                 supplement_warnings.extend(
-                    f"{source} collection was incomplete"
-                    for source in incomplete_supplements
+                    f"{source} collection was incomplete" for source in incomplete_supplements
                 )
             if archive_result and archive_result.get("source_degraded"):
                 supplement_warnings.append("common-crawl enrichment was incomplete")
@@ -1742,6 +1747,7 @@ def _scheduled_refresh_run(
         temporary.chmod(0o600)
         temporary.replace(state_path)
 
+    started = time.monotonic()
     while True:
         write_state(start, end)
         logger.info(
@@ -1752,6 +1758,17 @@ def _scheduled_refresh_run(
             end.isoformat(),
             state_path,
         )
+        if schedule == "xiaohongshu":
+            from .sources.xhs_control import XhsBlocked, XhsControl
+
+            try:
+                XhsControl().check()
+            except XhsBlocked as exc:
+                logger.warning("event=xiaohongshu_schedule_blocked reason=%s", exc.error_code)
+                raise typer.Exit(code=78 if not exc.retryable else 75) from exc
+            # Leave room for a bounded in-flight batch before systemd's hard deadline.
+            if time.monotonic() - started >= 11 * 3600:
+                raise typer.Exit(code=75)
         refresh(
             name=source,
             exclude_source=exclude_source,
@@ -1764,7 +1781,7 @@ def _scheduled_refresh_run(
             topic=None,
             sync_market_data=sync_market_data,
         )
-        if schedule == "posts":
+        if schedule in {"posts", "xiaohongshu"}:
             _latest_start, latest_end = scheduled_post_window()
             if end < latest_end:
                 previous_start, previous_end = start, end
@@ -1802,9 +1819,134 @@ def scheduled_refresh(
         state_env="RETAIL_TIDE_SCHEDULED_STATE_FILE",
         default_state_path="var/state/scheduled-refresh.json",
         source=None,
-        exclude_source=["wikimedia-pageviews"],
+        exclude_source=["wikimedia-pageviews", "xiaohongshu"],
         sync_market_data=True,
         schedule="posts",
+    )
+
+
+@app.command("scheduled-xiaohongshu", hidden=True)
+def scheduled_xiaohongshu(
+    limit: int = typer.Option(50000, min=1, help="每个分析阶段的最大记录数。"),
+):
+    """Collect and analyze Xiaohongshu with its own pinned Shanghai date."""
+    from .sources import xhs_control
+
+    previous_deadline = xhs_control.RUN_DEADLINE
+    xhs_control.RUN_DEADLINE = time.monotonic() + 11 * 3600
+    try:
+        _scheduled_refresh_run(
+            limit=limit,
+            state_env="RETAIL_TIDE_SCHEDULED_XIAOHONGSHU_STATE_FILE",
+            default_state_path="var/state/scheduled-xiaohongshu.json",
+            source="xiaohongshu",
+            exclude_source=None,
+            sync_market_data=False,
+            schedule="xiaohongshu",
+        )
+    except typer.Exit as exc:
+        if xhs_control.XhsControl().read().get("paused"):
+            raise typer.Exit(code=78) from exc
+        raise
+    finally:
+        xhs_control.RUN_DEADLINE = previous_deadline
+
+
+@app.command("xiaohongshu-resume")
+def xiaohongshu_resume():
+    """Clear the collection pause after the owner has handled login/verification."""
+    from .sources.xhs_control import XhsControl
+
+    asyncio.run(XhsControl().resume())
+    _json({"source": "xiaohongshu", "paused": False, "collection_started": False})
+
+
+@app.command("split-xiaohongshu-schedule", hidden=True)
+def split_xiaohongshu_schedule():
+    """Copy daily job progress into independent schedules without deleting originals."""
+    from .jobs.jobs import _save_backfill_state
+
+    settings = get_settings()
+    root = Path(os.getenv("RETAIL_TIDE_STATE_DIR", "var/state"))
+    posts_state = Path(
+        os.getenv("RETAIL_TIDE_SCHEDULED_STATE_FILE", "var/state/scheduled-refresh.json")
+    )
+    xhs_state = Path(
+        os.getenv(
+            "RETAIL_TIDE_SCHEDULED_XIAOHONGSHU_STATE_FILE", "var/state/scheduled-xiaohongshu.json"
+        )
+    )
+    copied = 0
+    pending_windows = []
+    with _exclusive_refresh_lock(settings):
+        for path in sorted((root / "refresh").glob("*-content.json")):
+            state = json.loads(path.read_text())
+            start, end = parse_datetime(state.get("since")), parse_datetime(state.get("until"))
+            jobs = state.get("jobs", {})
+            if (
+                not start
+                or not end
+                or end - start != timedelta(days=1)
+                or not isinstance(jobs, dict)
+            ):
+                continue
+            xhs_jobs = {key: job for key, job in jobs.items() if job.get("source") == "xiaohongshu"}
+            if not xhs_jobs:
+                continue
+            if any(not job.get("done") or job.get("partial") for job in xhs_jobs.values()):
+                pending_windows.append((start, end))
+            groups = [
+                xhs_jobs,
+                {key: job for key, job in jobs.items() if job.get("source") != "xiaohongshu"},
+            ]
+            for selected in groups:
+                if not selected:
+                    continue
+                names = sorted({job["source"] for job in selected.values()})
+                key = _collection_resume_key(
+                    names,
+                    since=start.isoformat(),
+                    until=end.isoformat(),
+                    date_range=None,
+                    days=None,
+                )
+                target = root / "refresh" / f"{key}-content.json"
+                if target.exists():
+                    continue
+                # Keep backend cursors and counters; retry-exhausted XHS jobs become resumable.
+                if names == ["xiaohongshu"]:
+                    for job in selected.values():
+                        if job.get("terminal_reason") == "retry_limit_exhausted":
+                            job.update(
+                                terminal=False, terminal_reason=None, retries=0, next_retry_at=None
+                            )
+                migrated = {
+                    **state,
+                    "jobs": selected,
+                    "retired_jobs": {},
+                    "next_job_key": next(iter(selected)),
+                    "migrated_from": path.name,
+                }
+                _save_backfill_state(target, migrated)
+                target.chmod(0o600)
+                copied += 1
+        if posts_state.exists():
+            old = json.loads(posts_state.read_text())
+            start, end = parse_datetime(old.get("since")), parse_datetime(old.get("until"))
+            if start and end and start < end:
+                pending_windows.append((start, end))
+        if pending_windows and not xhs_state.exists():
+            start, end = min(pending_windows)
+            _save_backfill_state(
+                xhs_state, {"version": 1, "since": start.isoformat(), "until": end.isoformat()}
+            )
+            xhs_state.chmod(0o600)
+    _json(
+        {
+            "copied_checkpoints": copied,
+            "xiaohongshu_state_present": xhs_state.exists(),
+            "originals_preserved": True,
+        }
     )
 
 
@@ -1840,7 +1982,12 @@ def rebuild_derived(
     try:
         repair_result = remove_misnormalized_zhihu_snapshots(session)
         reset_result = reset_metric_event_derivatives(session)
-        pipeline_result = run_core_pipeline(session, limit=limit, settings=settings)
+        pipeline_result = run_core_pipeline(
+            session,
+            limit=limit,
+            settings=settings,
+            resolve_all=True,
+        )
         if sync_market_data:
             market_result = _sync_topic_market(session, settings, end=now_utc().date())
             pipeline_result["returns_after_market_sync"] = evaluate_events(
@@ -2005,7 +2152,9 @@ def backfill(
                 "降级终止"
                 if row.get("terminal")
                 else (
-                    "完成" if row.get("done") else ("等待冷却重试" if row.get("error") else "已存断点")
+                    "完成"
+                    if row.get("done")
+                    else ("等待冷却重试" if row.get("error") else "已存断点")
                 )
             )
             strategy = f" / {row.get('sort_by')}" if row.get("sort_by") else ""
@@ -2042,7 +2191,11 @@ def backfill(
             raise typer.BadParameter(str(exc)) from exc
 
         pipeline_result = (
-            run_core_pipeline(session, limit=limit, settings=settings)
+            run_core_pipeline(
+                session,
+                limit=limit,
+                settings=settings,
+            )
             if run_pipeline
             else {"skipped": True, "reason": "disabled for this collection round"}
         )

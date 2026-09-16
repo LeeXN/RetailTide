@@ -202,9 +202,9 @@ def normalize_raw_observation(
         reference_date = date.fromisoformat(str(payload["market_session_date"]))
         # This is an explicit analysis bucket, not a claimed publication time.
         # ``kind`` and the API time semantics keep that distinction visible.
-        observed_at = as_utc(
-            datetime.combine(reference_date, time(15), tzinfo=SHANGHAI)
-        ) or observed_at
+        observed_at = (
+            as_utc(datetime.combine(reference_date, time(15), tzinfo=SHANGHAI)) or observed_at
+        )
     if raw.observation_kind in {"search_index", "topic_rank", "trend", "pageviews"}:
         keyword = str(payload.get("keyword") or payload.get("query") or "")
         value = float(payload.get("value", 0))
@@ -326,6 +326,7 @@ def normalize_pending(
     limit: int = 500,
     settings: Settings | None = None,
     source_names: set[str] | None = None,
+    normalized_content_ids: list[int] | None = None,
 ) -> int:
     settings = settings or get_settings()
     query = select(RawObservation)
@@ -338,9 +339,7 @@ def normalize_pending(
             eligible, _reason = zhihu_answer_reference_eligibility(raw.payload or {})
             if eligible:
                 session_date = str((raw.payload or {}).get("market_session_date"))
-                latest_content_raw[
-                    (raw.source_id, f"{raw.source_item_id}@{session_date}")
-                ] = raw.id
+                latest_content_raw[(raw.source_id, f"{raw.source_item_id}@{session_date}")] = raw.id
             continue
         if raw.observation_kind not in {
             "search_index",
@@ -390,7 +389,9 @@ def normalize_pending(
             break
     count = 0
     for raw in raws:
-        normalize_raw_observation(session, raw, settings=settings)
+        normalized = normalize_raw_observation(session, raw, settings=settings)
+        if normalized_content_ids is not None and isinstance(normalized, Content):
+            normalized_content_ids.append(normalized.id)
         count += 1
     session.commit()
     return count

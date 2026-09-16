@@ -1,0 +1,17 @@
+[Unit]
+Description=RetailTide previous-day Xiaohongshu collection and analysis container
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/retail-tide
+ExecStart=/usr/bin/docker compose --env-file /opt/retail-tide/.env -f /opt/retail-tide-ops/compose/retail-tide.compose.yaml run --rm --no-deps api scheduled-xiaohongshu --limit 50000
+Restart=on-failure
+RestartPreventExitStatus=78
+RestartSec=15min
+TimeoutStartSec=12h
+Nice=10
+UMask=0077

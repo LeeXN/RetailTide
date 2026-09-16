@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect previous Shanghai day's Xiaohongshu posts at 07:30
+
+[Timer]
+OnCalendar=*-*-* 07:30:00 Asia/Shanghai
+AccuracySec=1min
+RandomizedDelaySec=0
+Persistent=true
+Unit=retail-tide-xiaohongshu.service
+
+[Install]
+WantedBy=timers.target
